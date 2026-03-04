@@ -1,0 +1,13 @@
+{
+  "name": "@wts/market-ingestor",
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@wts/common": "0.0.1",
+    "@wts/kafka": "^0.0.1"
+  }
+}

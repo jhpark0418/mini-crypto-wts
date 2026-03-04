@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "declaration": true,
+    "sourceMap": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "baseUrl": "./",
+    "paths": {
+      "@wts/common": ["libs/common/src/index.ts"],
+      "@wts/kafka": ["libs/kafka/src/index.ts"],
+      "@wts/db": ["libs/db/src/index.ts"]
+    }
+  }
+}

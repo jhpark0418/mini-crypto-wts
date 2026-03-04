@@ -1,0 +1,30 @@
+{
+  "name": "mini-crypto-wts",
+  "private": true,
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "workspaces": [
+    "apps/*",
+    "libs/*",
+    "contracts/*"
+  ],
+  "scripts": {
+    "dev:api": "npm -w apps/api-gateway run start:dev",
+    "dev:web": "npm -w apps/web run dev",
+    "build": "npm -ws run build",
+    "lint": "npm -ws run lint",
+    "format": "prettier . --write"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "eslint": "^10.0.2",
+    "prettier": "^3.8.1",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
