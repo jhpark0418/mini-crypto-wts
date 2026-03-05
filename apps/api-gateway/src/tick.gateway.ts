@@ -24,4 +24,8 @@ export class TickGateway implements OnGatewayConnection, OnGatewayDisconnect {
         // 이벤트명은 tick 으로 통일
         this.server.emit("tick", tick);
     }
+
+    broadcastCandle(candle: unknown) {
+        this.server.emit("candle", candle);
+    }
 }

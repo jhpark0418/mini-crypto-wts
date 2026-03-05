@@ -15,7 +15,6 @@ export class TickConsumerService implements OnModuleInit, OnModuleDestroy {
 
     async onModuleInit() {
         const brokers = (this.config.get<string>("KAFKA_BROKERS") ?? "localhost:9092").split(",");
-        const topic = "tick.BTCUSDT";
 
         this.consumer = await createConsumer({
             clientId: "api-gateway",
@@ -25,27 +24,32 @@ export class TickConsumerService implements OnModuleInit, OnModuleDestroy {
 
         console.log("[api-gateway] consumer connected:", brokers.join(","));
         
-        await this.consumer.subscribe({ topic, fromBegining: false });
-
-        console.log("[api-gateway] subscribed:", topic);
+        // tick topic
+        await this.consumer.subscribe({ topic: "tick.BTCUSDT", fromBeginning: false });
+        // candle topic
+        await this.consumer.subscribe({ topic: "candle.1m.BTCUSDT", fromBeginning: false })
 
         await this.consumer.run({
             eachMessage: async ({ topic, partition, message }: any) => {
-                console.log("[api-gateway] got message:", {
-                    topic,
-                    partition,
-                    offset: message.offset,
-                    hasValue: !!message.value
-                });
+                // console.log("[api-gateway] got message:", {
+                //     topic,
+                //     partition,
+                //     offset: message.offset,
+                //     hasValue: !!message.value
+                // });
 
                 if (!message.value) return;
 
-                const text = message.value.toString();
-                const e = JSON.parse(text);
+                const e = JSON.parse(message.value.toString()) as TickEvent;
 
-                this.tickGateway.broadcastTick(e);
-
-                // console.log("[api-gateway] tick:", e.symbol, e.price);
+                if (topic.startsWith("tick.")) {
+                    this.tickGateway.broadcastTick(e);
+                }
+                
+                if (topic.startsWith("candle.")) {
+                    this.tickGateway.broadcastCandle(e);
+                }
+                console.log("[api-gateway] tick:", e.symbol, e.price);
             }
         });
 
