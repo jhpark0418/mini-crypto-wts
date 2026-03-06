@@ -1,8 +1,11 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { TickEvent } from "@wts/common";
+import { CandleUpsertedEvent, TickEvent } from "@wts/common";
 import { createConsumer } from "@wts/kafka";
 import { TickGateway } from "./tick.gateway";
+
+const CANDLE_TIMEFRAMES = ["10s", "30s", "1m", "5m", "15m", "30m", "1h"] as const;
+const SYMBOLS = ["BTCUSDT", "ETHUSDT"] as const;
 
 @Injectable()
 export class TickConsumerService implements OnModuleInit, OnModuleDestroy {
@@ -19,37 +22,67 @@ export class TickConsumerService implements OnModuleInit, OnModuleDestroy {
         this.consumer = await createConsumer({
             clientId: "api-gateway",
             brokers,
-            groupId: "api-gateway-tick"
+            groupId: "api-gateway-market"
         });
 
         console.log("[api-gateway] consumer connected:", brokers.join(","));
         
-        // tick topic
-        await this.consumer.subscribe({ topic: "tick.BTCUSDT", fromBeginning: false });
-        // candle topic
-        await this.consumer.subscribe({ topic: "candle.1m.BTCUSDT", fromBeginning: false })
+        
+        for (const symbol of SYMBOLS) {
+            // tick topic
+            await this.consumer.subscribe({ topic: `tick.${symbol}`, fromBeginning: false });
+
+            // candle topic
+            for (const timeframe of CANDLE_TIMEFRAMES) {
+                await this.consumer.subscribe({ topic: `candle.BTCUSDT.${timeframe}`, fromBeginning: false });
+            }
+        }
 
         await this.consumer.run({
             eachMessage: async ({ topic, partition, message }: any) => {
-                // console.log("[api-gateway] got message:", {
-                //     topic,
-                //     partition,
-                //     offset: message.offset,
-                //     hasValue: !!message.value
-                // });
-
                 if (!message.value) return;
 
-                const e = JSON.parse(message.value.toString()) as TickEvent;
+                const raw = message.value.toString();
 
-                if (topic.startsWith("tick.")) {
-                    this.tickGateway.broadcastTick(e);
-                }
+                try {
+                    if (topic.startsWith("tick.")) {
+                        const tick = JSON.parse(raw) as TickEvent;
+                        this.tickGateway.broadcastTick(tick);
+
+                        console.log(
+                            "[api-gateway] tick:",
+                            tick.symbol,
+                            tick.price,
+                            tick.qty,
+                            tick.ts
+                        );
+                        return;
+                    }
+
+                    if (topic.startsWith("candle.")) {
+                        const candle = JSON.parse(raw) as CandleUpsertedEvent;
+                        this.tickGateway.broadcastCandle(candle);
+
+                        console.log(
+                            "[api-gateway] candle:",
+                            candle.symbol,
+                            candle.timeframe,
+                            candle.openTime,
+                            candle.close
+                        );
+                        return;
+                    }
+
+                    console.warn("[api-gateway] unknown topic:", topic);
                 
-                if (topic.startsWith("candle.")) {
-                    this.tickGateway.broadcastCandle(e);
+                } catch (err) {
+                    console.error("[api-gateway] failed to parse message:", {
+                        topic,
+                        partition,
+                        raw,
+                        err,
+                    });
                 }
-                console.log("[api-gateway] tick:", e.symbol, e.price);
             }
         });
 

@@ -1,21 +1,35 @@
 import { createConsumer, createProducer } from "@wts/kafka";
-import { candleAggregator } from "./candle-aggregator.js";
+import { candleAggregator } from "./candle/candle.aggregator.js"
 import { CandleUpsertedEvent, TickEvent } from "@wts/common";
+import { Timeframe, TIMEFRAMES } from "./candle/candle.types.js";
+import { Symbol } from "@wts/common";
 
 const brokers = (process.env.KAFKA_BROKERS ?? "localhost:9092").split(",");
-const timeframe = "1m";
 
-function candleTopic(symbol: string, timeframe: string) {
-    console.log("[candle-service] starting...");
-    console.log("[candle-service] brokers:", brokers.join(","));
-    return `candle.${timeframe}.${symbol}`;
+function candleTopic(symbol: Symbol, timeframe: string) {
+    return `candle.${symbol}.${timeframe}`;
+}
+
+async function publishCandle(
+    producer: any,
+    event: CandleUpsertedEvent
+) {
+    const topic = candleTopic(event.symbol, event.timeframe);
+
+    await producer.send({
+        topic,
+        messages: [{ value: JSON.stringify(event) }]
+    });
 }
 
 async function main() {
+    console.log("[candle-service] starting...");
+    console.log("[candle-service] brokers:", brokers.join(","));
+
     const consumer = await createConsumer({
         clientId: "candle-service",
         brokers,
-        groupId: `candle-service-${timeframe}`
+        groupId: `candle-service`
     });
 
     const producer = await createProducer({
@@ -25,42 +39,52 @@ async function main() {
 
     console.log("[candle-service] consumer/producer connected");
 
-    const agg = new candleAggregator(timeframe);
+    const aggregators = TIMEFRAMES.map((tf) => new candleAggregator(tf));
 
     await consumer.subscribe({ topic: "tick.BTCUSDT", fromBeginning: false});
 
     await consumer.run({
-        eachMessage: async ({ topic, partition, message }: any) => {
+        eachMessage: async ({ message }: any) => {
             if (!message.value) return;
 
             const tick = JSON.parse(message.value.toString()) as TickEvent;
 
-            const { upserted, closed } = agg.onTick(tick);
+            for (const agg of aggregators) {
+                const { upserted, closed } = agg.onTick(tick);
 
-            const upsertTopic = candleTopic(upserted.symbol, upserted.timeframe);
+                await publishCandle(producer, upserted);
+                console.log(
+                    `[candle-service] upsert ${upserted.timeframe} ${upserted.symbol} ${upserted.openTime} close=${upserted.close}`
+                );
 
-            await producer.send({
-                topic: upsertTopic,
-                messages: [{ value: JSON.stringify(upserted) }]
-            });
-
-            console.log("[candle-service] candle update:", upserted.close);
-
-            // 버킷이 넘어가서 이전 캔들이 닫히면 publish
-            if (closed) {
-                const outTopic = candleTopic(closed.symbol, closed.timeframe);
-
-                await producer.send({
-                    topic: outTopic,
-                    messages: [{ value: JSON.stringify(closed satisfies CandleUpsertedEvent) }]
-                });
-
-                console.log("[candle-service] candle closed:", closed.openTime);
-            } 
+                if (closed) {
+                    await publishCandle(producer, closed);
+                    console.log(
+                        `[candle-service] closed ${closed.timeframe} ${closed.symbol} ${closed.openTime}`
+                    );
+                }
+            }
         }
     });
 
+    const flushTimer = setInterval(() => {
+        const now = Date.now();
+
+        for (const agg of aggregators) {
+            const expired = agg.flushIfExpired(now);
+
+            for (const ev of expired) {
+                void publishCandle(producer, ev);
+                console.log(
+                    `[candle-service] timer-closed ${ev.timeframe} ${ev.symbol} ${ev.openTime}`
+                );
+            }
+        }
+    }, 1000);
+
     const shutdown = async () => {
+        clearInterval(flushTimer);
+
         try {
             await consumer.disconnect();
             await producer.disconnect();

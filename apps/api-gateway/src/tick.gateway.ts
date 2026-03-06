@@ -1,4 +1,5 @@
 import { OnGatewayConnection, OnGatewayDisconnect, WebSocketGateway, WebSocketServer } from "@nestjs/websockets";
+import { CandleUpsertedEvent, TickEvent } from "@wts/common";
 import { Server } from "socket.io";
 
 @WebSocketGateway({
@@ -20,12 +21,12 @@ export class TickGateway implements OnGatewayConnection, OnGatewayDisconnect {
         console.log("[ws] disconnected:", client.id);
     }
 
-    broadcastTick(tick: unknown) {
+    broadcastTick(tick: TickEvent) {
         // 이벤트명은 tick 으로 통일
         this.server.emit("tick", tick);
     }
 
-    broadcastCandle(candle: unknown) {
+    broadcastCandle(candle: CandleUpsertedEvent) {
         this.server.emit("candle", candle);
     }
 }

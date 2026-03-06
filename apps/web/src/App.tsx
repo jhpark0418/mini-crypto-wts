@@ -1,11 +1,13 @@
 import { CandlestickSeries, createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
-import { useEffect, useRef, useState } from 'react'
-import { io } from "socket.io-client";
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { io, Socket } from "socket.io-client";
 
+type SymbolType = "BTCUSDT" | "ETHUSDT";
+type Timeframe = "10s" | "30s" | "1m" | "5m" | "15m" | "30m" | "1h";
 
 type TickEvent = {
   eventId: string;
-  symbol: string;
+  symbol: SymbolType;
   price: number;
   qty: number;
   ts: string;
@@ -15,8 +17,8 @@ type TickEvent = {
 type CandleUpsertedEvent = {
   eventId: string;
   type: "CANDLE_UPSERTED";
-  symbol: "BTCUSDT" | "ETHUSDT";
-  timeframe: "1m" | "5m" | "1h";
+  symbol: SymbolType;
+  timeframe: Timeframe;
   openTime: string; // ISO
   open: number;
   high: number;
@@ -25,14 +27,23 @@ type CandleUpsertedEvent = {
   volume: number;
 };
 
+const SYMBOLS: SymbolType[] = ["BTCUSDT", "ETHUSDT"];
+const TIMEFRAMES: Timeframe[] = ["10s", "30s", "1m", "5m", "15m", "30m", "1h"];
+
 export default function App() {
   const [connected, setConnected] = useState(false);
+  const [selectedSymbol, setSelectedSymbol] = useState<SymbolType>("BTCUSDT");
+  const [selectedTimeframe, setSelectedTimeframe] = useState<Timeframe>("1m");
+
   const [tick, setTick] = useState<TickEvent | null>(null);
   const [lastCandle, setLastCandle] = useState<CandleUpsertedEvent | null>(null);
 
   const chartContainerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const socketRef = useRef<Socket | null>(null);
+
+  const candleMapRef = useRef<Map<string, CandleUpsertedEvent>>(new Map());
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -40,11 +51,21 @@ export default function App() {
     const chart = createChart(chartContainerRef.current, {
       width: chartContainerRef.current.clientWidth || 900,
       height: 420,
-      layout: { textColor: "#111" },
-      timeScale: { timeVisible: true, secondsVisible: false },
+      layout: {
+        textColor: "#111",
+      },
+      timeScale: {
+        timeVisible: true,
+        secondsVisible: selectedTimeframe === "10s" || selectedTimeframe === "30s",
+      },
+      grid: {
+        vertLines: { visible: true },
+        horzLines: { visible: true },
+      },
     });
 
     const series = chart.addSeries(CandlestickSeries);
+
     chartRef.current = chart;
     seriesRef.current = series;
 
@@ -65,6 +86,16 @@ export default function App() {
     };
   }, []);
 
+  // timeframe 바뀌면 secondsVisible 옵션 갱신
+  useEffect(() => {
+    chartRef.current?.applyOptions({
+      timeScale: {
+        timeVisible: true,
+        secondsVisible: selectedTimeframe === "10s" || selectedTimeframe === "30s"
+      }
+    })
+  }, [selectedTimeframe]);
+
   useEffect(() => {
     const socket = io("http://localhost:3000/ws", {
       transports: ["websocket"]
@@ -72,11 +103,21 @@ export default function App() {
 
     socket.on("connect", () => setConnected(true));
     socket.on("disconnect", () => setConnected(false));
-    socket.on("tick", (msg: TickEvent) => setTick(msg));
+
+    socket.on("tick", (msg: TickEvent) => {
+      if (msg.symbol !== selectedSymbol) return;
+      setTick(msg);
+    });
+
     socket.on("candle", (candle: CandleUpsertedEvent) => {
+      if (candle.symbol !== selectedSymbol) return;
+      if (candle.timeframe !== selectedTimeframe) return;
+
       setLastCandle(candle);
 
-      // lightweight-charts는 time을 "초" 단위 UNIX timestamp로 받는 게 가장 깔끔
+      const key = `${candle.symbol}|${candle.timeframe}|${candle.openTime}`;
+      candleMapRef.current.set(key, candle);
+
       const t = Math.floor(new Date(candle.openTime).getTime() / 1000) as UTCTimestamp;
 
       seriesRef.current?.update({
@@ -90,8 +131,30 @@ export default function App() {
 
     return () => {
       socket.disconnect();
-    }
-  }, []);
+      socketRef.current = null;
+    };
+  }, [selectedSymbol, selectedTimeframe]);
+
+  useEffect(() => {
+    if (!seriesRef.current) return;
+
+    const candles = Array.from(candleMapRef.current.values())
+      .filter((c) => c.symbol === selectedSymbol && c.timeframe === selectedTimeframe)
+      .sort((a, b) => new Date(a.openTime).getTime() - new Date(b.openTime).getTime())
+      .map((c) => ({
+        time: Math.floor(new Date(c.openTime).getTime() / 1000) as UTCTimestamp,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close
+      }));
+
+      seriesRef.current.setData(candles);
+  }, [selectedSymbol, selectedTimeframe]);
+
+  const tickPriceText = useMemo(() => {
+    return tick ? tick.price.toFixed(2) : "-";
+  }, [tick]);
 
   return (
     <div style={{ padding: 24, fontFamily: "system-ui" }}>
@@ -101,15 +164,45 @@ export default function App() {
         WS: <b>{connected ? "CONNECTED" : "DISCONNECTED"}</b>
       </div>
 
+      <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
+        <div>
+          <label>Symbol </label>
+          <select
+            value={selectedSymbol}
+            onChange={(e) => setSelectedSymbol(e.target.value as SymbolType)}
+          >
+            {SYMBOLS.map((symbol) => (
+              <option key={symbol} value={symbol}>
+                {symbol}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label>Timeframe </label>
+          <select
+            value={selectedTimeframe}
+            onChange={(e) => setSelectedTimeframe(e.target.value as Timeframe)}
+          >
+            {TIMEFRAMES.map((tf) => (
+              <option key={tf} value={tf}>
+                {tf}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
       <div style={{ marginTop: 16 }}>
         <h3>Tick</h3>
         <div>Symbol: {tick?.symbol ?? "-"}</div>
-        <div>Price: {tick ? tick.price.toFixed(2) : "-"}</div>
+        <div>Price: {tickPriceText}</div>
         <div>Time: {tick?.ts ?? "-"}</div>
       </div>
 
       <div style={{ marginTop: 16 }}>
-        <h3>Candle (last)</h3>
+        <h3>Last Candle</h3>
         <div>Symbol: {lastCandle?.symbol ?? "-"}</div>
         <div>TF: {lastCandle?.timeframe ?? "-"}</div>
         <div>OpenTime: {lastCandle?.openTime ?? "-"}</div>
@@ -119,6 +212,7 @@ export default function App() {
             ? `${lastCandle.open.toFixed(2)} / ${lastCandle.high.toFixed(2)} / ${lastCandle.low.toFixed(2)} / ${lastCandle.close.toFixed(2)}`
             : "-"}
         </div>
+        <div>Volume: {lastCandle ? lastCandle.volume.toFixed(4) : "-"}</div>
       </div>
 
       <div style={{ marginTop: 16 }}>

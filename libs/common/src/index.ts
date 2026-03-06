@@ -14,7 +14,7 @@ export interface CandleUpsertedEvent {
   eventId: string;
   type: "CANDLE_UPSERTED";
   symbol: Symbol;
-  timeframe: "1m" | "5m" | "1h";
+  timeframe: string;
   openTime: string;
   open: number;
   high: number;
