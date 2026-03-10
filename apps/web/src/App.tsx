@@ -1,103 +1,94 @@
-import { CandlestickSeries, createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
+import { type UTCTimestamp } from 'lightweight-charts';
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { io, Socket } from "socket.io-client";
-
-type SymbolType = "BTCUSDT" | "ETHUSDT";
-type Timeframe = "10s" | "30s" | "1m" | "5m" | "15m" | "30m" | "1h";
-
-type TickEvent = {
-  eventId: string;
-  symbol: SymbolType;
-  price: number;
-  qty: number;
-  ts: string;
-  source: string;
-}
-
-type CandleUpsertedEvent = {
-  eventId: string;
-  type: "CANDLE_UPSERTED";
-  symbol: SymbolType;
-  timeframe: Timeframe;
-  openTime: string; // ISO
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-};
-
-const SYMBOLS: SymbolType[] = ["BTCUSDT", "ETHUSDT"];
-const TIMEFRAMES: Timeframe[] = ["10s", "30s", "1m", "5m", "15m", "30m", "1h"];
+import { io } from "socket.io-client";
+import { useCandleChart } from './hooks/useCandleChart';
+import { API_BASE_URL, fetchCandleHistory } from './market/api';
+import { 
+  SYMBOLS, 
+  TIMEFRAMES, 
+  type CandleUpsertedEvent, 
+  type SymbolType, 
+  type TickEvent, 
+  type Timeframe 
+} from './market/types';
 
 export default function App() {
   const [connected, setConnected] = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState<SymbolType>("BTCUSDT");
   const [selectedTimeframe, setSelectedTimeframe] = useState<Timeframe>("1m");
 
+  const selectedSymbolRef = useRef<SymbolType>(selectedSymbol);
+  const selectedTimeframeRef = useRef<Timeframe>(selectedTimeframe);
+
   const [tick, setTick] = useState<TickEvent | null>(null);
   const [lastCandle, setLastCandle] = useState<CandleUpsertedEvent | null>(null);
 
-  const chartContainerRef = useRef<HTMLDivElement | null>(null);
-  const chartRef = useRef<IChartApi | null>(null);
-  const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
-  const socketRef = useRef<Socket | null>(null);
+  const { chartContainerRef, chartRef, seriesRef } = useCandleChart(selectedTimeframe);
 
-  const candleMapRef = useRef<Map<string, CandleUpsertedEvent>>(new Map());
+  const lastChartTimeRef = useRef<number | null>(null);
+  const isHistoryLoadingRef = useRef(false);
 
   useEffect(() => {
-    if (!chartContainerRef.current) return;
+    selectedSymbolRef.current = selectedSymbol;
+    selectedTimeframeRef.current = selectedTimeframe;
+  }, [selectedSymbol, selectedTimeframe]);
+  
+  useEffect(() => {
+    if (!seriesRef.current) return;
 
-    const chart = createChart(chartContainerRef.current, {
-      width: chartContainerRef.current.clientWidth || 900,
-      height: 420,
-      layout: {
-        textColor: "#111",
-      },
-      timeScale: {
-        timeVisible: true,
-        secondsVisible: selectedTimeframe === "10s" || selectedTimeframe === "30s",
-      },
-      grid: {
-        vertLines: { visible: true },
-        horzLines: { visible: true },
-      },
-    });
+    let cancelled = false;
+    isHistoryLoadingRef.current = true;
 
-    const series = chart.addSeries(CandlestickSeries);
+    (async () => {
+      try {
+        const candles = await fetchCandleHistory(selectedSymbol, selectedTimeframe, 200);
 
-    chartRef.current = chart;
-    seriesRef.current = series;
+        if (cancelled || !seriesRef.current) return;
 
-    const handleResize = () => {
-      if (!chartContainerRef.current || !chartRef.current) return;
-      chartRef.current.applyOptions({
-        width: chartContainerRef.current.clientWidth,
-      });
-    };
+        seriesRef.current.setData(candles);
 
-    window.addEventListener("resize", handleResize);
+        const last = candles[candles.length - 1];
+        lastChartTimeRef.current = last ? Number(last.time) : null;
+
+        requestAnimationFrame(() => {
+          if (cancelled) return;
+          chartRef.current?.timeScale().fitContent();
+          seriesRef.current?.priceScale().applyOptions({
+            autoScale: true,
+            scaleMargins: {
+              top: 0.15,
+              bottom: 0.15
+            }
+          });
+        });
+
+      } catch (error) {
+        console.error("failed to load candle history:", error);
+
+        if (!cancelled && seriesRef.current) {
+          seriesRef.current.setData([]);
+          lastChartTimeRef.current = null;
+
+          requestAnimationFrame(() => {
+            if (!cancelled) {
+              chartRef.current?.timeScale().fitContent();
+            }
+          });
+        }
+      } finally {
+        if (!cancelled) {
+          isHistoryLoadingRef.current = false;
+        }
+      }
+    })();
 
     return () => {
-      window.removeEventListener("resize", handleResize);
-      chart.remove();
-      chartRef.current = null;
-      seriesRef.current = null;
+      cancelled = true;
     };
-  }, []);
-
-  // timeframe 바뀌면 secondsVisible 옵션 갱신
-  useEffect(() => {
-    chartRef.current?.applyOptions({
-      timeScale: {
-        timeVisible: true,
-        secondsVisible: selectedTimeframe === "10s" || selectedTimeframe === "30s"
-      }
-    })
-  }, [selectedTimeframe]);
+  }, [selectedSymbol, selectedTimeframe, chartRef, seriesRef]);
 
   useEffect(() => {
-    const socket = io("http://localhost:3000/ws", {
+    const socket = io(`${API_BASE_URL}/ws`, {
       transports: ["websocket"]
     });
 
@@ -105,52 +96,44 @@ export default function App() {
     socket.on("disconnect", () => setConnected(false));
 
     socket.on("tick", (msg: TickEvent) => {
-      if (msg.symbol !== selectedSymbol) return;
+      if (msg.symbol !== selectedSymbolRef.current) return;
       setTick(msg);
     });
 
     socket.on("candle", (candle: CandleUpsertedEvent) => {
-      if (candle.symbol !== selectedSymbol) return;
-      if (candle.timeframe !== selectedTimeframe) return;
+      if (candle.symbol !== selectedSymbolRef.current) return;
+      if (candle.timeframe !== selectedTimeframeRef.current) return;
+      if (isHistoryLoadingRef.current) return;
+
+      const t = Math.floor(new Date(candle.openTime).getTime() / 1000);
+      const lastTime = lastChartTimeRef.current;
+
+      if (lastTime !== null && t < lastTime) return;
 
       setLastCandle(candle);
 
-      const key = `${candle.symbol}|${candle.timeframe}|${candle.openTime}`;
-      candleMapRef.current.set(key, candle);
-
-      const t = Math.floor(new Date(candle.openTime).getTime() / 1000) as UTCTimestamp;
-
       seriesRef.current?.update({
-        time: t,
+        time: t as UTCTimestamp,
         open: candle.open,
         high: candle.high,
         low: candle.low,
         close: candle.close,
       });
+
+      lastChartTimeRef.current = t;
     });
 
     return () => {
       socket.disconnect();
-      socketRef.current = null;
     };
-  }, [selectedSymbol, selectedTimeframe]);
+  }, [seriesRef]);
 
   useEffect(() => {
-    if (!seriesRef.current) return;
-
-    const candles = Array.from(candleMapRef.current.values())
-      .filter((c) => c.symbol === selectedSymbol && c.timeframe === selectedTimeframe)
-      .sort((a, b) => new Date(a.openTime).getTime() - new Date(b.openTime).getTime())
-      .map((c) => ({
-        time: Math.floor(new Date(c.openTime).getTime() / 1000) as UTCTimestamp,
-        open: c.open,
-        high: c.high,
-        low: c.low,
-        close: c.close
-      }));
-
-      seriesRef.current.setData(candles);
-  }, [selectedSymbol, selectedTimeframe]);
+    setTick(null);
+    setLastCandle(null);
+    lastChartTimeRef.current = null;
+    seriesRef.current?.setData([]);
+  }, [selectedSymbol, selectedTimeframe, seriesRef]);
 
   const tickPriceText = useMemo(() => {
     return tick ? tick.price.toFixed(2) : "-";

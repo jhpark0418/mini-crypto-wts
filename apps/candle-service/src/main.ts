@@ -6,6 +6,8 @@ import { Symbol } from "@wts/common";
 
 const brokers = (process.env.KAFKA_BROKERS ?? "localhost:9092").split(",");
 
+const SYMBOLS = ["BTCUSDT", "ETHUSDT"] as const;
+
 function candleTopic(symbol: Symbol, timeframe: string) {
     return `candle.${symbol}.${timeframe}`;
 }
@@ -41,7 +43,9 @@ async function main() {
 
     const aggregators = TIMEFRAMES.map((tf) => new candleAggregator(tf));
 
-    await consumer.subscribe({ topic: "tick.BTCUSDT", fromBeginning: false});
+    for (const symbol of SYMBOLS) {
+        await consumer.subscribe({ topic: `tick.${symbol}`, fromBeginning: false });
+      }
 
     await consumer.run({
         eachMessage: async ({ message }: any) => {

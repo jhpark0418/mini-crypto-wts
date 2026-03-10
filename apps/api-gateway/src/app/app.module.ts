@@ -1,14 +1,16 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { TickConsumerService } from 'src/tick-consumer.service';
+import { CandlesModule } from 'src/candles/candles.module';
+import { MarketConsumerService } from 'src/market-consumer.service';
 import { TickGateway } from 'src/tick.gateway';
 
 @Module({
     imports: [
         ConfigModule.forRoot({
             isGlobal: true
-        })
+        }),
+        CandlesModule
     ],
-    providers: [TickConsumerService, TickGateway]
+    providers: [MarketConsumerService, TickGateway]
 })
 export class AppModule {}

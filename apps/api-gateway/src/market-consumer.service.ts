@@ -3,17 +3,20 @@ import { ConfigService } from "@nestjs/config";
 import { CandleUpsertedEvent, TickEvent } from "@wts/common";
 import { createConsumer } from "@wts/kafka";
 import { TickGateway } from "./tick.gateway";
+import { CandlesService } from "./candles/candles.service";
+import { Candle } from "./candles/candle.types";
 
 const CANDLE_TIMEFRAMES = ["10s", "30s", "1m", "5m", "15m", "30m", "1h"] as const;
 const SYMBOLS = ["BTCUSDT", "ETHUSDT"] as const;
 
 @Injectable()
-export class TickConsumerService implements OnModuleInit, OnModuleDestroy {
+export class MarketConsumerService implements OnModuleInit, OnModuleDestroy {
     private consumer: any;
 
     constructor(
         private readonly config: ConfigService,
-        private readonly tickGateway: TickGateway
+        private readonly tickGateway: TickGateway,
+        private readonly candlesService: CandlesService
     ) {}
 
     async onModuleInit() {
@@ -34,7 +37,7 @@ export class TickConsumerService implements OnModuleInit, OnModuleDestroy {
 
             // candle topic
             for (const timeframe of CANDLE_TIMEFRAMES) {
-                await this.consumer.subscribe({ topic: `candle.BTCUSDT.${timeframe}`, fromBeginning: false });
+                await this.consumer.subscribe({ topic: `candle.${symbol}.${timeframe}`, fromBeginning: false });
             }
         }
 
@@ -60,15 +63,29 @@ export class TickConsumerService implements OnModuleInit, OnModuleDestroy {
                     }
 
                     if (topic.startsWith("candle.")) {
-                        const candle = JSON.parse(raw) as CandleUpsertedEvent;
-                        this.tickGateway.broadcastCandle(candle);
+                        const candleEvent = JSON.parse(raw) as CandleUpsertedEvent;
+
+                        const candle: Candle = {
+                            symbol: candleEvent.symbol,
+                            timeframe: candleEvent.timeframe as Candle["timeframe"],
+                            openTime: candleEvent.openTime,
+                            open: candleEvent.open,
+                            high: candleEvent.high,
+                            low: candleEvent.low,
+                            close: candleEvent.close,
+                            volume: candleEvent.volume
+                        };
+
+                        // 캔들 저장
+                        await this.candlesService.save(candle);
+                        this.tickGateway.broadcastCandle(candleEvent);
 
                         console.log(
                             "[api-gateway] candle:",
-                            candle.symbol,
-                            candle.timeframe,
-                            candle.openTime,
-                            candle.close
+                            candleEvent.symbol,
+                            candleEvent.timeframe,
+                            candleEvent.openTime,
+                            candleEvent.close
                         );
                         return;
                     }
