@@ -1,14 +1,14 @@
 import { CandleUpsertedEvent, TickEvent } from "@wts/common";
-import { CandleState, Timeframe } from "./candle.types.js";
+import { CandleState } from "./candle.types.js";
 import { bucketStartMs, timeframeToMs, toIso, toMs } from "./candle.util.js";
-import { Symbol } from "@wts/common";
+import { Symbol, CandleTimeframe } from "@wts/common";
 import { toCandleUpertedEvent } from "./candle.mapper.js";
 
 export class candleAggregator {
     private stateBySymbol = new Map<Symbol, CandleState>();
 
     constructor(
-        private readonly timeframe: Timeframe
+        private readonly timeframe: CandleTimeframe
     ) {}
 
     onTick(tick: TickEvent): { upserted: CandleUpsertedEvent; closed?: CandleUpsertedEvent } {

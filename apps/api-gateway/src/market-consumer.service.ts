@@ -73,7 +73,8 @@ export class MarketConsumerService implements OnModuleInit, OnModuleDestroy {
                             high: candleEvent.high,
                             low: candleEvent.low,
                             close: candleEvent.close,
-                            volume: candleEvent.volume
+                            volume: candleEvent.volume,
+                            closeTime: candleEvent.closeTime
                         };
 
                         // 캔들 저장

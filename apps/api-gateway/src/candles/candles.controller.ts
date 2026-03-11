@@ -1,6 +1,6 @@
 import { BadRequestException, Controller, Get, Query } from '@nestjs/common';
 import { CandlesService } from './candles.service';
-import { SYMBOLS, SymbolType, Timeframe, TIMEFRAMES } from './candle.types';
+import { SYMBOLS, Symbol, CandleTimeframe, BINANCE_TIMEFRAMES } from '@wts/common';
 
 @Controller('api/candles')
 export class CandlesController {
@@ -18,11 +18,11 @@ export class CandlesController {
         const resolvedTimeframe = timeframe ?? "1m";
         const resolvedLimit = limit ? Number(limit) : 200;
 
-        if (!SYMBOLS.includes(resolvedSymbol as SymbolType)) {
+        if (!SYMBOLS.includes(resolvedSymbol as Symbol)) {
             throw new BadRequestException(`invalid symbol: ${resolvedSymbol}`);
         }
 
-        if (!TIMEFRAMES.includes(resolvedTimeframe as Timeframe)) {
+        if (!BINANCE_TIMEFRAMES.includes(resolvedTimeframe as CandleTimeframe)) {
             throw new BadRequestException(`invalid timeframe: ${resolvedTimeframe}`);
           }
       
@@ -31,8 +31,8 @@ export class CandlesController {
         }
 
         return this.candlesService.findLastest({
-            symbol: resolvedSymbol as SymbolType,
-            timeframe: resolvedTimeframe as Timeframe,
+            symbol: resolvedSymbol as Symbol,
+            timeframe: resolvedTimeframe as CandleTimeframe,
             limit: resolvedLimit
         });
     }

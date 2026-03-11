@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { CandleHistoryRepository } from './candle-history.repository';
-import { Candle, Timeframe } from './candle.types';
-import { Symbol } from '@wts/common';
+import { Candle } from './candle.types';
+import { CandleTimeframe } from '@wts/common';
 
 export const CANDLE_HISTORY_REPOSITORY = "CANDLE_HISTORY_REPOSITORY";
 
@@ -18,7 +18,7 @@ export class CandlesService {
 
     async findLastest(params: {
         symbol: Candle["symbol"];
-        timeframe: Timeframe;
+        timeframe: CandleTimeframe;
         limit: number;
     }): Promise<Candle[]> {
         return this.candleHsitoryRepository.findLastes(params);

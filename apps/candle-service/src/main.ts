@@ -1,14 +1,20 @@
 import { createConsumer, createProducer } from "@wts/kafka";
 import { candleAggregator } from "./candle/candle.aggregator.js"
 import { CandleUpsertedEvent, TickEvent } from "@wts/common";
-import { Timeframe, TIMEFRAMES } from "./candle/candle.types.js";
-import { Symbol } from "@wts/common";
+import { Symbol, CandleTimeframe } from "@wts/common";
 
 const brokers = (process.env.KAFKA_BROKERS ?? "localhost:9092").split(",");
 
 const SYMBOLS = ["BTCUSDT", "ETHUSDT"] as const;
+const BINANCE_TIMEFRAMES = [
+    "1s", 
+    "1m", "3m", "5m", "15m", "30m",
+    "1h", "2h", "4h", "6h", "8h", "12h",
+    "1d", "3d",
+    "1w",
+] as const satisfies CandleTimeframe[];
 
-function candleTopic(symbol: Symbol, timeframe: string) {
+function candleTopic(symbol: Symbol, timeframe: CandleTimeframe) {
     return `candle.${symbol}.${timeframe}`;
 }
 
@@ -41,7 +47,7 @@ async function main() {
 
     console.log("[candle-service] consumer/producer connected");
 
-    const aggregators = TIMEFRAMES.map((tf) => new candleAggregator(tf));
+    const aggregators = BINANCE_TIMEFRAMES.map((tf) => new candleAggregator(tf));
 
     for (const symbol of SYMBOLS) {
         await consumer.subscribe({ topic: `tick.${symbol}`, fromBeginning: false });
