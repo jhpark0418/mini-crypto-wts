@@ -6,7 +6,11 @@ import { TickGateway } from "./tick.gateway";
 import { CandlesService } from "./candles/candles.service";
 import { Candle } from "./candles/candle.types";
 
-const CANDLE_TIMEFRAMES = ["10s", "30s", "1m", "5m", "15m", "30m", "1h"] as const;
+const CANDLE_TIMEFRAMES = [
+    "1m", "5m", "30m",
+    "1h", "12h",
+    "1d"
+] as const;
 const SYMBOLS = ["BTCUSDT", "ETHUSDT"] as const;
 
 @Injectable()
@@ -65,20 +69,6 @@ export class MarketConsumerService implements OnModuleInit, OnModuleDestroy {
                     if (topic.startsWith("candle.")) {
                         const candleEvent = JSON.parse(raw) as CandleUpsertedEvent;
 
-                        const candle: Candle = {
-                            symbol: candleEvent.symbol,
-                            timeframe: candleEvent.timeframe as Candle["timeframe"],
-                            openTime: candleEvent.openTime,
-                            open: candleEvent.open,
-                            high: candleEvent.high,
-                            low: candleEvent.low,
-                            close: candleEvent.close,
-                            volume: candleEvent.volume,
-                            closeTime: candleEvent.closeTime
-                        };
-
-                        // 캔들 저장
-                        await this.candlesService.save(candle);
                         this.tickGateway.broadcastCandle(candleEvent);
 
                         console.log(

@@ -16,10 +16,11 @@ export interface TickEvent {
     type: "CANDLE_UPSERTED";
     symbol: Symbol;
     timeframe: CandleTimeframe;
-    openTime: string;
+    openTime: number;
     open: number;
     high: number;
     low: number;
     close: number;
     volume: number;
+    closeTime: number;
   }

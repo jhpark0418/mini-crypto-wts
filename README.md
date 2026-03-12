@@ -399,6 +399,7 @@ docker compose up
 서비스 실행
 
 ```bash
+npm -w libs/common run build
 npm -w apps/market-ingestor run dev
 npm -w apps/candle-service run dev
 npm -w apps/api-gateway run start:dev

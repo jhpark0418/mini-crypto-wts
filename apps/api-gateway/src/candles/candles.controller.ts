@@ -30,10 +30,6 @@ export class CandlesController {
             throw new BadRequestException(`invalid limit: ${limit}`);
         }
 
-        return this.candlesService.findLastest({
-            symbol: resolvedSymbol as Symbol,
-            timeframe: resolvedTimeframe as CandleTimeframe,
-            limit: resolvedLimit
-        });
+        return;
     }
 }

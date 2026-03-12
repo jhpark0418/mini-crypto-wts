@@ -1,17 +1,19 @@
+import "reflect-metadata";
+import "./env.js";
 import { createConsumer, createProducer } from "@wts/kafka";
 import { candleAggregator } from "./candle/candle.aggregator.js"
-import { CandleUpsertedEvent, TickEvent } from "@wts/common";
-import { Symbol, CandleTimeframe } from "@wts/common";
+import { CandleUpsertedEvent, TickEvent, Symbol, CandleTimeframe } from "@wts/common";
+import { AppDataSource } from "./db/data-source.js";
+import { upsertCandle } from "./db/repositories/candle.repository.js";
+import { backfillCandles } from "./binance/backfill.service.js";
 
 const brokers = (process.env.KAFKA_BROKERS ?? "localhost:9092").split(",");
 
 const SYMBOLS = ["BTCUSDT", "ETHUSDT"] as const;
 const BINANCE_TIMEFRAMES = [
-    "1s", 
-    "1m", "3m", "5m", "15m", "30m",
-    "1h", "2h", "4h", "6h", "8h", "12h",
-    "1d", "3d",
-    "1w",
+    "1m", "5m", "30m",
+    "1h", "12h",
+    "1d"
 ] as const satisfies CandleTimeframe[];
 
 function candleTopic(symbol: Symbol, timeframe: CandleTimeframe) {
@@ -34,6 +36,12 @@ async function main() {
     console.log("[candle-service] starting...");
     console.log("[candle-service] brokers:", brokers.join(","));
 
+    await AppDataSource.initialize();
+    console.log("[candle-service] database connected");
+
+    await backfillCandles(SYMBOLS, BINANCE_TIMEFRAMES, 200);
+    console.log("[candle-service] initial backfill completed");
+
     const consumer = await createConsumer({
         clientId: "candle-service",
         brokers,
@@ -51,7 +59,7 @@ async function main() {
 
     for (const symbol of SYMBOLS) {
         await consumer.subscribe({ topic: `tick.${symbol}`, fromBeginning: false });
-      }
+    }
 
     await consumer.run({
         eachMessage: async ({ message }: any) => {
@@ -62,28 +70,57 @@ async function main() {
             for (const agg of aggregators) {
                 const { upserted, closed } = agg.onTick(tick);
 
+                await upsertCandle({
+                    symbol: upserted.symbol,
+                    timeframe: upserted.timeframe,
+                    openTime: upserted.openTime.toString(),
+                    open: upserted.open,
+                    high: upserted.high,
+                    low: upserted.low,
+                    close: upserted.close,
+                    volume: upserted.volume,
+                });
+
                 await publishCandle(producer, upserted);
-                console.log(
-                    `[candle-service] upsert ${upserted.timeframe} ${upserted.symbol} ${upserted.openTime} close=${upserted.close}`
-                );
+                console.log(`[candle-service] upsert ${upserted.timeframe} ${upserted.symbol} ${upserted.openTime} close=${upserted.close}`);
 
                 if (closed) {
+                    await upsertCandle({
+                        symbol: closed.symbol,
+                        timeframe: closed.timeframe,
+                        openTime: closed.openTime.toString(),
+                        open: closed.open,
+                        high: closed.high,
+                        low: closed.low,
+                        close: closed.close,
+                        volume: closed.volume,
+                    });
+
                     await publishCandle(producer, closed);
-                    console.log(
-                        `[candle-service] closed ${closed.timeframe} ${closed.symbol} ${closed.openTime}`
-                    );
+                    console.log(`[candle-service] closed ${closed.timeframe} ${closed.symbol} ${closed.openTime}`);
                 }
             }
         }
     });
 
-    const flushTimer = setInterval(() => {
+    const flushTimer = setInterval(async () => {
         const now = Date.now();
 
         for (const agg of aggregators) {
             const expired = agg.flushIfExpired(now);
 
             for (const ev of expired) {
+                await upsertCandle({
+                    symbol: ev.symbol,
+                    timeframe: ev.timeframe,
+                    openTime: ev.openTime.toString(),
+                    open: ev.open,
+                    high: ev.high,
+                    low: ev.low,
+                    close: ev.close,
+                    volume: ev.volume,
+                });
+
                 void publishCandle(producer, ev);
                 console.log(
                     `[candle-service] timer-closed ${ev.timeframe} ${ev.symbol} ${ev.openTime}`
@@ -98,6 +135,10 @@ async function main() {
         try {
             await consumer.disconnect();
             await producer.disconnect();
+
+            if (AppDataSource.isInitialized) {
+                await AppDataSource.destroy();
+            }
         } finally {
             process.exit(0);
         }
