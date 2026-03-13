@@ -1,5 +1,5 @@
-import { Symbol } from "./market";
-import { CandleTimeframe } from "./market";
+import { Symbol } from "./market.js";
+import { CandleTimeframe } from "./market.js";
 
 export interface TickEvent {
     eventId: string;

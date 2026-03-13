@@ -3,22 +3,15 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { io } from "socket.io-client";
 import { useCandleChart } from './hooks/useCandleChart';
 import { API_BASE_URL, fetchCandleHistory } from './market/api';
-import { 
-  SYMBOLS, 
-  TIMEFRAMES, 
-  type CandleUpsertedEvent, 
-  type SymbolType, 
-  type TickEvent, 
-  type Timeframe 
-} from './market/types';
+import { BINANCE_TIMEFRAMES, SYMBOLS, type CandleTimeframe, type CandleUpsertedEvent, type Symbol, type TickEvent } from '@wts/common';
 
 export default function App() {
   const [connected, setConnected] = useState(false);
-  const [selectedSymbol, setSelectedSymbol] = useState<SymbolType>("BTCUSDT");
-  const [selectedTimeframe, setSelectedTimeframe] = useState<Timeframe>("1m");
+  const [selectedSymbol, setSelectedSymbol] = useState<Symbol>("BTCUSDT");
+  const [selectedTimeframe, setSelectedTimeframe] = useState<CandleTimeframe>("1m");
 
-  const selectedSymbolRef = useRef<SymbolType>(selectedSymbol);
-  const selectedTimeframeRef = useRef<Timeframe>(selectedTimeframe);
+  const selectedSymbolRef = useRef<Symbol>(selectedSymbol);
+  const selectedTimeframeRef = useRef<CandleTimeframe>(selectedTimeframe);
 
   const [tick, setTick] = useState<TickEvent | null>(null);
   const [lastCandle, setLastCandle] = useState<CandleUpsertedEvent | null>(null);
@@ -45,22 +38,38 @@ export default function App() {
 
         if (cancelled || !seriesRef.current) return;
 
-        seriesRef.current.setData(candles);
+        seriesRef.current.setData(
+          candles.map((item) => ({
+            time: Math.floor(new Date(item.openTime).getTime() / 1000) as UTCTimestamp,
+            open: item.open,
+            high: item.high,
+            low: item.low,
+            close: item.close
+          }))
+        );
 
         const last = candles[candles.length - 1];
-        lastChartTimeRef.current = last ? Number(last.time) : null;
+        lastChartTimeRef.current = last 
+          ? Math.floor(new Date(last.openTime).getTime() / 1000)
+          : null;
 
-        requestAnimationFrame(() => {
-          if (cancelled) return;
-          chartRef.current?.timeScale().fitContent();
-          seriesRef.current?.priceScale().applyOptions({
-            autoScale: true,
-            scaleMargins: {
-              top: 0.15,
-              bottom: 0.15
-            }
-          });
-        });
+        setLastCandle(
+          last
+            ? {
+                eventId: "history",
+                type: "CANDLE_UPSERTED",
+                symbol: last.symbol,
+                timeframe: last.timeframe,
+                openTime: new Date(last.openTime).getTime(),
+                closeTime: new Date(last.openTime).getTime(),
+                open: last.open,
+                high: last.high,
+                low: last.low,
+                close: last.close,
+                volume: last.volume,
+              }
+            : null
+        );
 
       } catch (error) {
         console.error("failed to load candle history:", error);
@@ -97,6 +106,9 @@ export default function App() {
 
     socket.on("tick", (msg: TickEvent) => {
       if (msg.symbol !== selectedSymbolRef.current) return;
+      if (Math.random() < 0.01) {
+        console.log(`[trace][web-tick] symbol=${msg.symbol} lagMs=${Date.now() - new Date(msg.ts).getTime()}`);
+      }
       setTick(msg);
     });
 
@@ -105,20 +117,32 @@ export default function App() {
       if (candle.timeframe !== selectedTimeframeRef.current) return;
       if (isHistoryLoadingRef.current) return;
 
-      const t = Math.floor(new Date(candle.openTime).getTime() / 1000);
+      const recvLagMs = Date.now() - candle.openTime;
+      const t = Math.floor(candle.openTime / 1000) as UTCTimestamp;
       const lastTime = lastChartTimeRef.current;
 
       if (lastTime !== null && t < lastTime) return;
 
+      if (Math.random() < 0.05) {
+        console.log(`[trace][web-candle] symbol=${candle.symbol} tf=${candle.timeframe} recvLagFromOpenMs=${recvLagMs}`);
+      }
+
       setLastCandle(candle);
 
+      const updateStart = performance.now();
+
       seriesRef.current?.update({
-        time: t as UTCTimestamp,
+        time: t,
         open: candle.open,
         high: candle.high,
         low: candle.low,
         close: candle.close,
       });
+
+      const updateCost = performance.now() - updateStart;
+      if (updateCost > 3) {
+        console.log(`[trace][web-chart-update] symbol=${candle.symbol} tf=${candle.timeframe} costMs=${updateCost.toFixed(2)}`);
+      }
 
       lastChartTimeRef.current = t;
     });
@@ -152,7 +176,7 @@ export default function App() {
           <label>Symbol </label>
           <select
             value={selectedSymbol}
-            onChange={(e) => setSelectedSymbol(e.target.value as SymbolType)}
+            onChange={(e) => setSelectedSymbol(e.target.value as Symbol)}
           >
             {SYMBOLS.map((symbol) => (
               <option key={symbol} value={symbol}>
@@ -166,9 +190,9 @@ export default function App() {
           <label>Timeframe </label>
           <select
             value={selectedTimeframe}
-            onChange={(e) => setSelectedTimeframe(e.target.value as Timeframe)}
+            onChange={(e) => setSelectedTimeframe(e.target.value as CandleTimeframe)}
           >
-            {TIMEFRAMES.map((tf) => (
+            {BINANCE_TIMEFRAMES.map((tf) => (
               <option key={tf} value={tf}>
                 {tf}
               </option>
@@ -188,7 +212,7 @@ export default function App() {
         <h3>Last Candle</h3>
         <div>Symbol: {lastCandle?.symbol ?? "-"}</div>
         <div>TF: {lastCandle?.timeframe ?? "-"}</div>
-        <div>OpenTime: {lastCandle?.openTime ?? "-"}</div>
+        <div>OpenTime: {lastCandle ? new Date(lastCandle.openTime).toISOString() : "-"}</div>
         <div>
           O/H/L/C:{" "}
           {lastCandle

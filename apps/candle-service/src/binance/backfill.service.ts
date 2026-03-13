@@ -12,13 +12,14 @@ export async function backfillCandles(
             console.log(`[candle-service] backfill start ${symbol} ${timeframe}`);
 
             const rows = await fetchBinanceKlines(symbol, timeframe, limit);
+            const closedRows = rows.slice(0, -1);
 
-            for (const row of rows) {
+            for (const row of closedRows) {
                 const input = mapKlineToUpsertInput(symbol, timeframe, row);
                 await upsertCandle(input);
             }
         
-            console.log(`[candle-service] backfill done ${symbol} ${timeframe} count=${rows.length}`);
+            console.log(`[candle-service] backfill done ${symbol} ${timeframe} count=${closedRows.length}`);
         }
     }
 }

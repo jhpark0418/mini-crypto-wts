@@ -1,17 +1,8 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { CandleUpsertedEvent, TickEvent } from "@wts/common";
+import { BINANCE_TIMEFRAMES, CandleUpsertedEvent, SYMBOLS, TickEvent } from "@wts/common";
 import { createConsumer } from "@wts/kafka";
 import { TickGateway } from "./tick.gateway";
-import { CandlesService } from "./candles/candles.service";
-import { Candle } from "./candles/candle.types";
-
-const CANDLE_TIMEFRAMES = [
-    "1m", "5m", "30m",
-    "1h", "12h",
-    "1d"
-] as const;
-const SYMBOLS = ["BTCUSDT", "ETHUSDT"] as const;
 
 @Injectable()
 export class MarketConsumerService implements OnModuleInit, OnModuleDestroy {
@@ -20,7 +11,6 @@ export class MarketConsumerService implements OnModuleInit, OnModuleDestroy {
     constructor(
         private readonly config: ConfigService,
         private readonly tickGateway: TickGateway,
-        private readonly candlesService: CandlesService
     ) {}
 
     async onModuleInit() {
@@ -40,7 +30,7 @@ export class MarketConsumerService implements OnModuleInit, OnModuleDestroy {
             await this.consumer.subscribe({ topic: `tick.${symbol}`, fromBeginning: false });
 
             // candle topic
-            for (const timeframe of CANDLE_TIMEFRAMES) {
+            for (const timeframe of BINANCE_TIMEFRAMES) {
                 await this.consumer.subscribe({ topic: `candle.${symbol}.${timeframe}`, fromBeginning: false });
             }
         }
@@ -54,30 +44,51 @@ export class MarketConsumerService implements OnModuleInit, OnModuleDestroy {
                 try {
                     if (topic.startsWith("tick.")) {
                         const tick = JSON.parse(raw) as TickEvent;
+
+                        const lagMs = Date.now() - new Date(tick.ts).getTime();
+
+                        if (Math.random() < 0.01) {
+                            console.log(`[trace][gateway-tick] symbol=${tick.symbol} lagMs=${lagMs}`);
+                        }
+
                         this.tickGateway.broadcastTick(tick);
 
-                        console.log(
-                            "[api-gateway] tick:",
-                            tick.symbol,
-                            tick.price,
-                            tick.qty,
-                            tick.ts
-                        );
+                        // console.log(
+                        //     "[api-gateway] tick:",
+                        //     tick.symbol,
+                        //     tick.price,
+                        //     tick.qty,
+                        //     tick.ts
+                        // );
                         return;
                     }
 
                     if (topic.startsWith("candle.")) {
                         const candleEvent = JSON.parse(raw) as CandleUpsertedEvent;
 
+                        const lagMs = Date.now() - candleEvent.openTime;
+
+                        if (Math.random() < 0.05) {
+                            console.log(`[trace][gateway-candle] symbol=${candleEvent.symbol} tf=${candleEvent.timeframe} lagFromOpenMs=${lagMs}`);
+                        }
+
+                        const emitStart = performance.now();
+
                         this.tickGateway.broadcastCandle(candleEvent);
 
-                        console.log(
-                            "[api-gateway] candle:",
-                            candleEvent.symbol,
-                            candleEvent.timeframe,
-                            candleEvent.openTime,
-                            candleEvent.close
-                        );
+                        const emitCost = performance.now() - emitStart;
+
+                        if (emitCost > 5) {
+                            console.log(`[trace][gateway-emit] symbol=${candleEvent.symbol} tf=${candleEvent.timeframe} costMs=${emitCost.toFixed(2)}`);
+                        }
+
+                        // console.log(
+                        //     "[api-gateway] candle:",
+                        //     candleEvent.symbol,
+                        //     candleEvent.timeframe,
+                        //     candleEvent.openTime,
+                        //     candleEvent.close
+                        // );
                         return;
                     }
 

@@ -1,4 +1,4 @@
-import { BINANCE_TIMEFRAMES, CandleTimeframe, Symbol, SYMBOLS } from "./market";
+import { BINANCE_TIMEFRAMES, CandleTimeframe, Symbol, SYMBOLS } from "./market.js";
 
 export function isValidSymbol(value: string): value is Symbol {
     return (SYMBOLS as readonly string[]).includes(value);

@@ -2,19 +2,12 @@ import "reflect-metadata";
 import "./env.js";
 import { createConsumer, createProducer } from "@wts/kafka";
 import { candleAggregator } from "./candle/candle.aggregator.js"
-import { CandleUpsertedEvent, TickEvent, Symbol, CandleTimeframe } from "@wts/common";
+import { CandleUpsertedEvent, TickEvent, Symbol, CandleTimeframe, SYMBOLS, BINANCE_TIMEFRAMES } from "@wts/common";
 import { AppDataSource } from "./db/data-source.js";
 import { upsertCandle } from "./db/repositories/candle.repository.js";
 import { backfillCandles } from "./binance/backfill.service.js";
 
 const brokers = (process.env.KAFKA_BROKERS ?? "localhost:9092").split(",");
-
-const SYMBOLS = ["BTCUSDT", "ETHUSDT"] as const;
-const BINANCE_TIMEFRAMES = [
-    "1m", "5m", "30m",
-    "1h", "12h",
-    "1d"
-] as const satisfies CandleTimeframe[];
 
 function candleTopic(symbol: Symbol, timeframe: CandleTimeframe) {
     return `candle.${symbol}.${timeframe}`;
@@ -25,11 +18,17 @@ async function publishCandle(
     event: CandleUpsertedEvent
 ) {
     const topic = candleTopic(event.symbol, event.timeframe);
+    const t0 = performance.now();
 
     await producer.send({
         topic,
         messages: [{ value: JSON.stringify(event) }]
     });
+
+    const cost = performance.now() - t0;
+    if (cost > 10) {
+        console.log(`[trace][candle-publish] symbol=${event.symbol} tf=${event.timeframe} costMs=${cost.toFixed(2)}`);
+    }
 }
 
 async function main() {
@@ -67,28 +66,37 @@ async function main() {
 
             const tick = JSON.parse(message.value.toString()) as TickEvent;
 
+            const tickLagMs = Date.now() - new Date(tick.ts).getTime();
+
+            if (Math.random() < 0.01) {
+                console.log(`[trace][candle-consume] symbol=${tick.symbol} tickLagMs=${tickLagMs} tickTs=${tick.ts}`);
+            }
+
+            const processStart = performance.now();
+
             for (const agg of aggregators) {
+                const aggStart = performance.now();
+
                 const { upserted, closed } = agg.onTick(tick);
 
-                await upsertCandle({
-                    symbol: upserted.symbol,
-                    timeframe: upserted.timeframe,
-                    openTime: upserted.openTime.toString(),
-                    open: upserted.open,
-                    high: upserted.high,
-                    low: upserted.low,
-                    close: upserted.close,
-                    volume: upserted.volume,
-                });
+                const aggCost = performance.now() - aggStart;
+                if (aggCost > 5) {
+                    console.log(
+                    `[trace][candle-agg] symbol=${tick.symbol} tf=${agg.timeframe ?? "unknown"} costMs=${aggCost.toFixed(2)}`
+                    );
+                }
 
-                await publishCandle(producer, upserted);
-                console.log(`[candle-service] upsert ${upserted.timeframe} ${upserted.symbol} ${upserted.openTime} close=${upserted.close}`);
+                void publishCandle(producer, upserted).catch((err) => {
+                    console.error("[candle-service] publish upserted failed:", err);
+                });;
 
                 if (closed) {
+                    const dbStart = performance.now();
+
                     await upsertCandle({
                         symbol: closed.symbol,
                         timeframe: closed.timeframe,
-                        openTime: closed.openTime.toString(),
+                        openTime: new Date(closed.openTime).toISOString(),
                         open: closed.open,
                         high: closed.high,
                         low: closed.low,
@@ -96,24 +104,36 @@ async function main() {
                         volume: closed.volume,
                     });
 
-                    await publishCandle(producer, closed);
-                    console.log(`[candle-service] closed ${closed.timeframe} ${closed.symbol} ${closed.openTime}`);
+                    const dbCost = performance.now() - dbStart;
+                    console.log(`[trace][candle-db] symbol=${closed.symbol} tf=${closed.timeframe} costMs=${dbCost.toFixed(2)}`);
+
+                    void publishCandle(producer, closed).catch((err) => {
+                        console.error("[candle-service] publish closed failed:", err);
+                    });;
                 }
+            }
+
+            const processCost = performance.now() - processStart;
+            if (processCost > 10) {
+                console.log(`[trace][candle-eachMessage] symbol=${tick.symbol} totalCostMs=${processCost.toFixed(2)}`   );
             }
         }
     });
 
     const flushTimer = setInterval(async () => {
         const now = Date.now();
+        const timerStart = performance.now();
 
         for (const agg of aggregators) {
             const expired = agg.flushIfExpired(now);
 
             for (const ev of expired) {
+                const dbStart = performance.now();
+
                 await upsertCandle({
                     symbol: ev.symbol,
                     timeframe: ev.timeframe,
-                    openTime: ev.openTime.toString(),
+                    openTime: new Date(ev.openTime).toISOString(),
                     open: ev.open,
                     high: ev.high,
                     low: ev.low,
@@ -121,11 +141,16 @@ async function main() {
                     volume: ev.volume,
                 });
 
+                const dbCost = performance.now() - dbStart;
+                console.log(`[trace][flush-db] symbol=${ev.symbol} tf=${ev.timeframe} costMs=${dbCost.toFixed(2)}`);
+
                 void publishCandle(producer, ev);
-                console.log(
-                    `[candle-service] timer-closed ${ev.timeframe} ${ev.symbol} ${ev.openTime}`
-                );
             }
+        }
+
+        const timerCost = performance.now() - timerStart;
+        if (timerCost > 20) {
+            console.log(`[trace][flush-total] costMs=${timerCost.toFixed(2)}`);
         }
     }, 1000);
 

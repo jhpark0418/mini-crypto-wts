@@ -75,10 +75,17 @@ export function startBinaceTradeStream(params: {
                     ts: new Date(msg.T).toISOString(),
                     source: "binance"
                 };
+
+                const receivedAt = Date.now();
+                const sourceTs = new Date(msg.T).getTime();
+
+                if (Math.random() < 0.01) {
+                    console.log(`[trace][ingestor] symbol=${msg.s} sourceLagMs=${receivedAt - sourceTs} publishStart=${receivedAt}`);
+                }
     
                 await publishJson(producer, topic, tick);
     
-                console.log(`[market-ingestor] tick ${tick.symbol} price=${tick.price}`);
+                // console.log(`[market-ingestor] tick ${tick.symbol} price=${tick.price}`);
             } catch (error) {
                 console.error("[market-ingestor] message error", error);
             }

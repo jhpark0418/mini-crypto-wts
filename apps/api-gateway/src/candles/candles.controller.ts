@@ -14,8 +14,8 @@ export class CandlesController {
         @Query("timeframe") timeframe?: string,
         @Query("limit") limit?: string
     ) {
-        const resolvedSymbol = symbol ?? "BTCUSDT";
-        const resolvedTimeframe = timeframe ?? "1m";
+        const resolvedSymbol = (symbol ?? "BTCUSDT") as Symbol;
+        const resolvedTimeframe = (timeframe ?? "1m") as CandleTimeframe;
         const resolvedLimit = limit ? Number(limit) : 200;
 
         if (!SYMBOLS.includes(resolvedSymbol as Symbol)) {
@@ -26,10 +26,14 @@ export class CandlesController {
             throw new BadRequestException(`invalid timeframe: ${resolvedTimeframe}`);
           }
       
-        if (!Number.isInteger(resolvedLimit) || resolvedLimit <= 0 || resolvedLimit > 5000) {
+        if (!Number.isInteger(resolvedLimit) || resolvedLimit <= 0 || resolvedLimit > 200) {
             throw new BadRequestException(`invalid limit: ${limit}`);
         }
 
-        return;
+        return this.candlesService.findLatest({
+            symbol: resolvedSymbol,
+            timeframe: resolvedTimeframe,
+            limit: resolvedLimit
+        });
     }
 }

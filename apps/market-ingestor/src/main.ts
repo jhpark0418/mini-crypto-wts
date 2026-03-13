@@ -1,6 +1,5 @@
-import { randomUUID } from "node:crypto";
-import type { Symbol, TickEvent } from "@wts/common";
-import { createProducer, publishJson } from "@wts/kafka";
+import { SYMBOLS } from "@wts/common";
+import { createProducer } from "@wts/kafka";
 import { startBinaceTradeStream } from "./binance-trade.client.js";
 
 async function main() {
@@ -13,18 +12,20 @@ async function main() {
 
   console.log("[market-ingestor] producer connected");
 
-  const symbol: Symbol = "BTCUSDT";
-
-  const stream = startBinaceTradeStream({
-    symbol,
-    producer,
-    reconnectDelayMs: 3000
-  });
+  const streams = SYMBOLS.map((symbol) => 
+    startBinaceTradeStream({
+      symbol,
+      producer,
+      reconnectDelayMs: 3000
+    })
+  );
 
   const shutdown = async () => {
     console.log("[market-ingestor] shutting down...");
 
-    stream.shutdown();
+    for (const stream of streams) {
+      stream.shutdown();
+    }
 
     try {
       await producer.disconnect();

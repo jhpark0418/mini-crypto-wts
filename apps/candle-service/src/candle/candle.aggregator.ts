@@ -2,7 +2,7 @@ import { CandleUpsertedEvent, TickEvent } from "@wts/common";
 import { CandleState } from "./candle.types.js";
 import { bucketStartMs, timeframeToMs, toIso, toMs } from "./candle.util.js";
 import { Symbol, CandleTimeframe } from "@wts/common";
-import { toCandleUpertedEvent } from "./candle.mapper.js";
+import { toCandleUpsertedEvent } from "./candle.mapper.js";
 
 export class candleAggregator {
     private stateBySymbol = new Map<Symbol, CandleState>();
@@ -22,7 +22,7 @@ export class candleAggregator {
 
         // 처음이거나 버킷이 바뀌면 기존 state를 closed로 내보내고 새로 시작
         if (!existed || existed.openTimeMs !== openTimeMs) {
-            const closed = existed ? toCandleUpertedEvent(existed) : undefined;
+            const closed = existed ? toCandleUpsertedEvent(existed) : undefined;
 
             const next: CandleState = {
                 symbol: tick.symbol,
@@ -41,7 +41,7 @@ export class candleAggregator {
 
             this.stateBySymbol.set(tick.symbol, next);
 
-            return { upserted: toCandleUpertedEvent(next), closed };
+            return { upserted: toCandleUpsertedEvent(next), closed };
         }
 
         existed.high = Math.max(existed.high, price);
@@ -51,7 +51,7 @@ export class candleAggregator {
         existed.trades += 1;
         existed.lastTickMs = tsMs;
 
-        return { upserted: toCandleUpertedEvent(existed) };
+        return { upserted: toCandleUpsertedEvent(existed) };
     }
 
     /**
@@ -66,7 +66,7 @@ export class candleAggregator {
 
         for (const [symbol, st] of this.stateBySymbol.entries()) {
             if (st.openTimeMs < currentBucketStart) {
-                out.push(toCandleUpertedEvent(st));
+                out.push(toCandleUpsertedEvent(st));
                 this.stateBySymbol.delete(symbol);
             }
         }

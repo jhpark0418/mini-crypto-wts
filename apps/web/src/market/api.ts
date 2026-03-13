@@ -1,5 +1,7 @@
 import type { UTCTimestamp } from "lightweight-charts";
-import type { CandleHistoryItem, SymbolType } from "./types";
+import type { CandleHistoryItem } from "./types";
+import type { CandleTimeframe, Symbol } from "@wts/common";
+
 
 const API_BASE_URL = "http://localhost:3000";
 
@@ -13,9 +15,9 @@ export function toChartCandle(candle: CandleHistoryItem) {
     };
 }
 
-export async function fetchCandleHistory(symbol: SymbolType, timeframe: string, limit = 200) {
+export async function fetchCandleHistory(symbol: Symbol, timeframe: CandleTimeframe, limit = 200) {
     const res = await fetch(
-        `http://localhost:3000/api/candles?symbol=${symbol}&timeframe=${timeframe}&limit=${limit}`
+        `${API_BASE_URL}/api/candles?symbol=${symbol}&timeframe=${timeframe}&limit=${limit}`
     );
 
     if (!res.ok) {
@@ -26,14 +28,12 @@ export async function fetchCandleHistory(symbol: SymbolType, timeframe: string, 
 
     const dedupedMap = new Map<string, CandleHistoryItem>();
     for (const candle of data) {
-        dedupedMap.set(candle.openTime, candle);
+        dedupedMap.set(candle.openTime.toString(), candle);
     }
 
-    const dedupedSorted = Array.from(dedupedMap.values()).sort(
+    return Array.from(dedupedMap.values()).sort(
         (a, b) => new Date(a.openTime).getTime() - new Date(b.openTime).getTime()
     );
-
-    return dedupedSorted.map(toChartCandle);
 }
 
 export { API_BASE_URL };

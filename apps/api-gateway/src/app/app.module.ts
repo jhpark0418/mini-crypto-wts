@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { CandlesModule } from 'src/candles/candles.module';
+import { CandleEntity } from 'src/candles/entities/candle.entity';
 import { MarketConsumerService } from 'src/market-consumer.service';
 import { TickGateway } from 'src/tick.gateway';
 
@@ -8,6 +10,20 @@ import { TickGateway } from 'src/tick.gateway';
     imports: [
         ConfigModule.forRoot({
             isGlobal: true
+        }),
+        TypeOrmModule.forRootAsync({
+            inject: [ConfigService],
+            useFactory: (config: ConfigService) => ({
+                type: "postgres" as const,
+                host: config.get<string>("DB_HOST", "localhost"),
+                port: Number(config.get<string>("DB_PORT", "5432")),
+                username: config.get<string>("DB_USERNAME", "postgres"),
+                password: config.get<string>("DB_PASSWORD", "postgres"),
+                database: config.get<string>("DB_DATABASE", "miniwts"),
+                entities: [CandleEntity],
+                synchronize: false,
+                logging: false,
+            })
         }),
         CandlesModule
     ],
