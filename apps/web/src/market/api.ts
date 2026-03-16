@@ -36,4 +36,16 @@ export async function fetchCandleHistory(symbol: Symbol, timeframe: CandleTimefr
     );
 }
 
+export async function fetchActiveCandle(symbol: Symbol, timeframe: CandleTimeframe) {
+    const res = await fetch(
+        `${API_BASE_URL}/api/market/active-candle?symbol=${symbol}&timeframe=${timeframe}`
+    );
+
+    if (!res.ok) {
+        throw new Error(`failed to fetch active candle: ${res.status}`);
+    }
+
+    return res.json();
+}
+
 export { API_BASE_URL };

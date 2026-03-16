@@ -4,7 +4,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { CandlesModule } from 'src/candles/candles.module';
 import { CandleEntity } from 'src/candles/entities/candle.entity';
 import { MarketConsumerService } from 'src/market-consumer.service';
-import { TickGateway } from 'src/tick.gateway';
+import { MarketGateway } from 'src/market.gateway';
+import { MarketModule } from 'src/market/market.module';
 
 @Module({
     imports: [
@@ -25,8 +26,9 @@ import { TickGateway } from 'src/tick.gateway';
                 logging: false,
             })
         }),
-        CandlesModule
+        CandlesModule,
+        MarketModule
     ],
-    providers: [MarketConsumerService, TickGateway]
+    providers: [MarketConsumerService, MarketGateway]
 })
 export class AppModule {}

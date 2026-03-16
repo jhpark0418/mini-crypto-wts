@@ -2,6 +2,7 @@ import "./env.js";
 import { SYMBOLS } from "@wts/common";
 import { createProducer, publishJson } from "@wts/kafka";
 import { startBinanceTradeStream } from "./binance-trade.client.js";
+import { startBinanceDepthStream } from "./binance-depth.client.js";
 
 function isKafkaDisconnectError(error: unknown) {
   if (!(error instanceof Error)) return false;
@@ -57,14 +58,13 @@ async function main() {
     return reconnectPromise;
   };
 
-  const safePublishTick = async (topic: string, tick: unknown) => {
-    // reconnect 중이면 현재 tick은 버림
+  const safePublish = async (topic: string, payload: unknown) => {
     if (!producerReady || reconnectPromise) {
       return;
     }
 
     try {
-      await publishJson(producer, topic, tick);
+      await publishJson(producer, topic, payload);
     } catch (error) {
       console.error("[market-ingestor] message error", error);
 
@@ -77,18 +77,30 @@ async function main() {
 
   console.log("[market-ingestor] producer connected");
 
-  const streams = SYMBOLS.map((symbol) =>
+  const tradeStreams = SYMBOLS.map((symbol) =>
     startBinanceTradeStream({
       symbol,
-      publishTick: safePublishTick,
+      publishTick: safePublish,
       reconnectDelayMs: 3000,
     })
+  );
+
+  const depthStreams = SYMBOLS.map((symbol) => 
+      startBinanceDepthStream({
+        symbol,
+        publishOrderbook: safePublish,
+        reconnectDelayMs: 3000
+      })
   );
 
   const shutdown = async () => {
     console.log("[market-ingestor] shutting down...");
 
-    for (const stream of streams) {
+    for (const stream of tradeStreams) {
+      stream.shutdown();
+    }
+
+    for (const stream of depthStreams) {
       stream.shutdown();
     }
 

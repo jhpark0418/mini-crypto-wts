@@ -36,3 +36,20 @@ export interface CandleClosedEvent {
 }
 
 export type CandleEvent = CandleOpenedEvent | CandleClosedEvent;
+
+export interface OrderbookLevel {
+  price: number;
+  qty: number;
+}
+
+export interface OrderbookSnapshotEvent {
+  eventId: string;
+  type: "ORDERBOOK_SNAPSHOT";
+  symbol: Symbol;
+  bids: OrderbookLevel[];
+  asks: OrderbookLevel[];
+  ts: string;
+  source: "binance";
+}
+
+export type MarketEvent = | TickEvent | CandleOpenedEvent | CandleClosedEvent | OrderbookSnapshotEvent;

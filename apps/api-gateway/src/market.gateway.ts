@@ -1,5 +1,5 @@
 import { OnGatewayConnection, OnGatewayDisconnect, WebSocketGateway, WebSocketServer } from "@nestjs/websockets";
-import { CandleEvent, TickEvent } from "@wts/common";
+import { CandleEvent, OrderbookSnapshotEvent, TickEvent } from "@wts/common";
 import { Server } from "socket.io";
 
 @WebSocketGateway({
@@ -9,11 +9,11 @@ import { Server } from "socket.io";
         credentials: true
     }
 })
-export class TickGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class MarketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @WebSocketServer()
     server!: Server;
 
-    handleConnection(client: any, ...args: any[]) {
+    handleConnection(client: any) {
         console.log("[ws] connected:", client.id);
     }
 
@@ -28,5 +28,9 @@ export class TickGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     broadcastCandle(candle: CandleEvent) {
         this.server.emit("candle", candle);
+    }
+
+    broadcastOrdebook(orderbook: OrderbookSnapshotEvent) {
+        this.server.emit("orderbook", orderbook);
     }
 }

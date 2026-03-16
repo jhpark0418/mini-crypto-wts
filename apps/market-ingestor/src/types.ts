@@ -9,3 +9,11 @@ export type BinanceTradeMessage = {
     m: boolean;
     M: boolean;
 }
+
+export type BinanceDepthLevel = [string, string];
+
+export type BinanceDepthMessage = {
+    lastUpdateId: number;
+    bids: BinanceDepthLevel[];
+    asks: BinanceDepthLevel[];
+}
