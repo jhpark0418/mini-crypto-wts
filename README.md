@@ -14,6 +14,8 @@ Binance WebSocket 실시간 시세 데이터 수집
 멀티 타임프레임 Candle Aggregation Engine
 WebSocket 기반 실시간 차트 업데이트
 Historical + Realtime 데이터 결합 전략
+실시간 Orderbook Depth 스트리밍
+Active Candle Snapshot API
 멀티 심볼 지원 (BTCUSDT, ETHUSDT)
 ```
 
@@ -163,10 +165,14 @@ candle.ETHUSDT.30m
 역할
 
 * Kafka candle 이벤트 consume
+* Kafka orderbook 이벤트 consume
 * WebSocket 실시간 데이터 전송
+* Active Candle Snapshot API 제공
 * 클라이언트 연결 관리
 
-api-gateway는 데이터 저장 책임을 가지지 않으며 단순 중계 역할만 수행합니다.
+api-gateway는 데이터 저장 책임을 가지지 않으며
+실시간 데이터 스트림을 클라이언트로 전달하는 역할을 수행합니다.
+또한 현재 진행 중인 캔들을 메모리에 유지하여 Active Candle Snapshot API를 제공합니다.
 
 ---
 
@@ -219,9 +225,38 @@ update()
 - 빠른 초기 로딩
 - 실시간 스트림과 자연스러운 결합
 
+
+## Active Candle Snapshot
+심볼 변경 시 현재 진행 중인 캔들이 즉시 반영되지 않는 문제를 해결하기 위해
+api-gateway에서 Active Candle Snapshot API를 제공합니다.
+```
+GET /api/market/active-candle
+```
+
+차트 초기화 전략
+```
+REST → history candles
+REST → active candle snapshot
+WebSocket → realtime update
+```
+
+이를통해 **심볼 변경 시 차트 지연 제거**, **Realtime tick 즉시 반영**을 구현했습니다.
+
 ---
 
 # WebSocket Events
+## tick
+실시간 체결 데이터
+
+```JSON
+{
+  "symbol": "BTCUSDT",
+  "price": 72802.38,
+  "qty": 0.001,
+  "ts": "2026-03-16T04:12:34Z"
+}
+```
+
 ## candle
 실시간 캔들 업데이트
 
@@ -235,6 +270,23 @@ update()
   "low": 64880,
   "close": 64920,
   "volume": 1.23
+}
+```
+
+## orderbook
+실시간 호가 데이터
+```JSON
+{
+  "symbol": "BTCUSDT",
+  "bids": [
+    { "price": 72802.38, "qty": 0.41 },
+    { "price": 72802.37, "qty": 0.52 }
+  ],
+  "asks": [
+    { "price": 72802.39, "qty": 0.32 },
+    { "price": 72802.40, "qty": 0.18 }
+  ],
+  "ts": "2026-03-16T04:12:34Z"
 }
 ```
 
@@ -266,6 +318,10 @@ ETHUSDT
 REST → setData()
 WebSocket → update()
 ```
+
+실시간 Orderbook Depth UI
+Spread / Best Bid / Best Ask 표시
+Active Candle Snapshot 기반 차트 초기화
 
 ---
 
@@ -334,22 +390,12 @@ Step4  Tick 데이터를 기반으로 한 Candle Aggregation 서비스 구현
 Step5  멀티 타임프레임 캔들 생성 (1m / 5m / 30m / 1h / 12h / 1d)
 Step6  PostgreSQL을 이용한 캔들 데이터 저장 및 히스토리 관리
 Step7  시스템 안정화 및 멀티 심볼(BTCUSDT, ETHUSDT) 지원
+Step8  Orderbook 스트리밍 및 Active Candle Snapshot 기능 구현
 ```
 
 ---
 
 # Future Roadmap
-
-## Step8
-
-Orderbook Stream
-실시간 호가(Orderbook) 데이터 스트리밍 기능을 추가합니다.
-```text
-- Binance Depth Stream 수신
-- Kafka를 통한 호가 데이터 이벤트 스트리밍
-- WebSocket을 통한 실시간 호가 데이터 전달
-- 프론트엔드 Orderbook UI 구현
-```
 
 ## Step9
 
@@ -531,29 +577,6 @@ new Date(tick.ts).toISOString()
 
 ---
 
-# Real-time Chart Update Issue
-
-### 문제
-
-차트가 실시간으로 업데이트되지 않고
-마지막 Candle만 표시되는 현상이 발생했습니다.
-
-### 원인
-
-차트 업데이트 로직에서 **현재 Candle update와 새로운 Candle insert를 구분하지 못하는 문제**가 있었습니다.
-
-### 해결
-
-같은 openTime의 Candle은 update하고
-새로운 구간이 시작되면 insert하도록 수정했습니다.
-
-```
-same openTime → update
-new openTime → insert
-```
-
----
-
 # Multi-Symbol Streaming Issue
 
 ### 문제
@@ -615,6 +638,30 @@ websocket receive lag
 ```
 
 이를 통해 **데이터 파이프라인 전체의 지연을 분석**할 수 있습니다.
+
+---
+# Chart Initialization Delay
+
+### 문제
+symbol, timeframe 변경 시 첫 CandleClosedEvent를 수신하기 전까진 tick의 움직임이 차트에 반영되지 않는 문제가 발생했습니다.
+
+### 원인
+차트 초기화 시 마지막으로 닫힌 캔들까지만 가져와 현재 진행중인 캔들의 상태를 알 수 없었기 때문에 실시간 업데이트가 되지 않았습니다.
+
+### 해결
+api-gateway에서 현재 진행 중인 캔들을 메모리에 유지하고
+REST API로 제공하는 Active Candle Snapshot API를 구현했습니다.
+```
+GET /api/market/active-candle
+```
+
+차트 초기화 전략
+```
+History → REST
+Active Candle → REST
+Realtime → WebSocket
+```
+이를 통해 symbol 변경 직후에도 즉시 실시간 캔들 업데이트가 가능해졌습니다.
 
 ---
 
