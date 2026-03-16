@@ -1,8 +1,8 @@
 import "reflect-metadata";
 import "./env.js";
 import { createConsumer, createProducer } from "@wts/kafka";
-import { candleAggregator } from "./candle/candle.aggregator.js"
-import { CandleUpsertedEvent, TickEvent, Symbol, CandleTimeframe, SYMBOLS, BINANCE_TIMEFRAMES } from "@wts/common";
+import { CandleAggregator } from "./candle/candle.aggregator.js"
+import { TickEvent, Symbol, CandleTimeframe, SYMBOLS, BINANCE_TIMEFRAMES, CandleEvent } from "@wts/common";
 import { AppDataSource } from "./db/data-source.js";
 import { upsertCandle } from "./db/repositories/candle.repository.js";
 import { backfillCandles } from "./binance/backfill.service.js";
@@ -15,7 +15,7 @@ function candleTopic(symbol: Symbol, timeframe: CandleTimeframe) {
 
 async function publishCandle(
     producer: any,
-    event: CandleUpsertedEvent
+    event: CandleEvent
 ) {
     const topic = candleTopic(event.symbol, event.timeframe);
     const t0 = performance.now();
@@ -54,7 +54,7 @@ async function main() {
 
     console.log("[candle-service] consumer/producer connected");
 
-    const aggregators = BINANCE_TIMEFRAMES.map((tf) => new candleAggregator(tf));
+    const aggregators = BINANCE_TIMEFRAMES.map((tf) => new CandleAggregator(tf));
 
     for (const symbol of SYMBOLS) {
         await consumer.subscribe({ topic: `tick.${symbol}`, fromBeginning: false });
@@ -77,18 +77,20 @@ async function main() {
             for (const agg of aggregators) {
                 const aggStart = performance.now();
 
-                const { upserted, closed } = agg.onTick(tick);
+                const { opened, closed } = agg.onTick(tick);
 
                 const aggCost = performance.now() - aggStart;
                 if (aggCost > 5) {
                     console.log(
-                    `[trace][candle-agg] symbol=${tick.symbol} tf=${agg.timeframe ?? "unknown"} costMs=${aggCost.toFixed(2)}`
+                    `[trace][candle-agg] symbol=${tick.symbol} tf=${agg.getTimeframe() ?? "unknown"} costMs=${aggCost.toFixed(2)}`
                     );
                 }
 
-                void publishCandle(producer, upserted).catch((err) => {
-                    console.error("[candle-service] publish upserted failed:", err);
-                });;
+                if (opened) {
+                    void publishCandle(producer, opened).catch((err) => {
+                        console.error("[candle-service] publish opened failed:", err);
+                    });
+                }
 
                 if (closed) {
                     const dbStart = performance.now();
@@ -109,7 +111,7 @@ async function main() {
 
                     void publishCandle(producer, closed).catch((err) => {
                         console.error("[candle-service] publish closed failed:", err);
-                    });;
+                    });
                 }
             }
 

@@ -1,6 +1,6 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { BINANCE_TIMEFRAMES, CandleUpsertedEvent, SYMBOLS, TickEvent } from "@wts/common";
+import { BINANCE_TIMEFRAMES, CandleEvent, SYMBOLS, TickEvent } from "@wts/common";
 import { createConsumer } from "@wts/kafka";
 import { TickGateway } from "./tick.gateway";
 
@@ -64,7 +64,7 @@ export class MarketConsumerService implements OnModuleInit, OnModuleDestroy {
                     }
 
                     if (topic.startsWith("candle.")) {
-                        const candleEvent = JSON.parse(raw) as CandleUpsertedEvent;
+                        const candleEvent = JSON.parse(raw) as CandleEvent;
 
                         const lagMs = Date.now() - candleEvent.openTime;
 

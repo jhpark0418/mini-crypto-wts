@@ -3,7 +3,17 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { io } from "socket.io-client";
 import { useCandleChart } from './hooks/useCandleChart';
 import { API_BASE_URL, fetchCandleHistory } from './market/api';
-import { BINANCE_TIMEFRAMES, SYMBOLS, type CandleTimeframe, type CandleUpsertedEvent, type Symbol, type TickEvent } from '@wts/common';
+import { BINANCE_TIMEFRAMES, SYMBOLS, type CandleTimeframe, type CandleEvent, type Symbol, type TickEvent } from '@wts/common';
+import { type ActiveCandle, type CandleHistoryItem } from './market/types';
+
+const TIMEFRAME_MS: Record<CandleTimeframe, number> = {
+  "1m": 60_000,
+  "5m": 5 * 60_000,
+  "30m": 30 * 60_000,
+  "1h": 60 * 60_000,
+  "12h": 12 * 60 * 60_000,
+  "1d": 24 * 60 * 60_000,
+}
 
 export default function App() {
   const [connected, setConnected] = useState(false);
@@ -14,12 +24,55 @@ export default function App() {
   const selectedTimeframeRef = useRef<CandleTimeframe>(selectedTimeframe);
 
   const [tick, setTick] = useState<TickEvent | null>(null);
-  const [lastCandle, setLastCandle] = useState<CandleUpsertedEvent | null>(null);
-
+  const [lastCandle, setLastCandle] = useState<CandleHistoryItem | null>(null);
+  
   const { chartContainerRef, chartRef, seriesRef } = useCandleChart(selectedTimeframe);
-
+  
+  const activeCandleRef = useRef<ActiveCandle | null>(null);
   const lastChartTimeRef = useRef<number | null>(null);
   const isHistoryLoadingRef = useRef(false);
+
+  function toDisplayCandle(event: CandleEvent): ActiveCandle {
+    if (event.type === "CANDLE_OPENED") {
+      return {
+        symbol: event.symbol,
+        timeframe: event.timeframe,
+        openTime: event.openTime,
+        closeTime: event.closeTime,
+        open: event.open,
+        high: event.open,
+        low: event.open,
+        close: event.open,
+        volume: 0,
+      };
+    }
+  
+    return {
+      symbol: event.symbol,
+      timeframe: event.timeframe,
+      openTime: event.openTime,
+      closeTime: event.closeTime,
+      open: event.open,
+      high: event.high,
+      low: event.low,
+      close: event.close,
+      volume: event.volume,
+    };
+  }
+  
+  function updateSeriesFromCandle(candle: ActiveCandle) {
+    const t = Math.floor(candle.openTime / 1000) as UTCTimestamp;
+  
+    seriesRef.current?.update({
+      time: t,
+      open: candle.open,
+      high: candle.high,
+      low: candle.low,
+      close: candle.close,
+    });
+  
+    lastChartTimeRef.current = t;
+  }
 
   useEffect(() => {
     selectedSymbolRef.current = selectedSymbol;
@@ -56,12 +109,10 @@ export default function App() {
         setLastCandle(
           last
             ? {
-                eventId: "history",
-                type: "CANDLE_UPSERTED",
                 symbol: last.symbol,
                 timeframe: last.timeframe,
                 openTime: new Date(last.openTime).getTime(),
-                closeTime: new Date(last.openTime).getTime(),
+                closeTime: new Date(last.openTime).getTime() + TIMEFRAME_MS[last.timeframe] - 1,
                 open: last.open,
                 high: last.high,
                 low: last.low,
@@ -70,6 +121,8 @@ export default function App() {
               }
             : null
         );
+
+        activeCandleRef.current = null;
 
       } catch (error) {
         console.error("failed to load candle history:", error);
@@ -109,42 +162,91 @@ export default function App() {
       if (Math.random() < 0.01) {
         console.log(`[trace][web-tick] symbol=${msg.symbol} lagMs=${Date.now() - new Date(msg.ts).getTime()}`);
       }
+
       setTick(msg);
-    });
 
-    socket.on("candle", (candle: CandleUpsertedEvent) => {
-      if (candle.symbol !== selectedSymbolRef.current) return;
-      if (candle.timeframe !== selectedTimeframeRef.current) return;
-      if (isHistoryLoadingRef.current) return;
+      const active = activeCandleRef.current;
+      if (!active) return;
+      if (active.symbol !== msg.symbol) return;
+      if (active.timeframe !== selectedTimeframeRef.current) return;
 
-      const recvLagMs = Date.now() - candle.openTime;
-      const t = Math.floor(candle.openTime / 1000) as UTCTimestamp;
-      const lastTime = lastChartTimeRef.current;
+      const tickMs = new Date(msg.ts).getTime();
 
-      if (lastTime !== null && t < lastTime) return;
+      // 현재 활성 봉 구간 안에 있는 tick만 반영
+      if (tickMs < active.openTime || tickMs > active.closeTime) return;
 
-      if (Math.random() < 0.05) {
-        console.log(`[trace][web-candle] symbol=${candle.symbol} tf=${candle.timeframe} recvLagFromOpenMs=${recvLagMs}`);
-      }
-
-      setLastCandle(candle);
-
-      const updateStart = performance.now();
+      active.high = Math.max(active.high, msg.price);
+      active.low = Math.min(active.low, msg.price);
+      active.close = msg.price;
+      active.volume += msg.qty ?? 0;
 
       seriesRef.current?.update({
-        time: t,
-        open: candle.open,
-        high: candle.high,
-        low: candle.low,
-        close: candle.close,
+        time: Math.floor(active.openTime / 1000) as UTCTimestamp,
+        open: active.open,
+        high: active.high,
+        low: active.low,
+        close: active.close
       });
 
-      const updateCost = performance.now() - updateStart;
-      if (updateCost > 3) {
-        console.log(`[trace][web-chart-update] symbol=${candle.symbol} tf=${candle.timeframe} costMs=${updateCost.toFixed(2)}`);
+      setLastCandle({...active});
+    });
+
+    socket.on("candle", (event: CandleEvent) => {
+      if (event.symbol !== selectedSymbolRef.current) return;
+      if (event.timeframe !== selectedTimeframeRef.current) return;
+      if (isHistoryLoadingRef.current) return;
+
+      const candle = toDisplayCandle(event);
+      updateSeriesFromCandle(candle);
+
+      if (event.type === "CANDLE_OPENED") {
+        activeCandleRef.current = candle;
+      } else {
+        const active = activeCandleRef.current;
+        if (
+          active &&
+          active.symbol === event.symbol &&
+          active.timeframe === event.timeframe &&
+          active.openTime === event.openTime
+        ) {
+          activeCandleRef.current = null;
+        }
+
+        setLastCandle(candle);
       }
 
-      lastChartTimeRef.current = t;
+      // if (candle.symbol !== selectedSymbolRef.current) return;
+      // if (candle.timeframe !== selectedTimeframeRef.current) return;
+      // if (isHistoryLoadingRef.current) return;
+
+      // const recvLagMs = Date.now() - candle.openTime;
+      // const t = Math.floor(candle.openTime / 1000) as UTCTimestamp;
+      // const lastTime = lastChartTimeRef.current;
+
+      // if (lastTime !== null && t < lastTime) return;
+
+      // if (Math.random() < 0.05) {
+      //   console.log(`[trace][web-candle] symbol=${candle.symbol} tf=${candle.timeframe} recvLagFromOpenMs=${recvLagMs}`);
+      // }
+
+      // setLastCandle(candle);
+
+      // const updateStart = performance.now();
+
+      // seriesRef.current?.update({
+      //   time: t,
+      //   open: candle.open,
+      //   high: candle.high,
+      //   low: candle.low,
+      //   close: candle.close,
+      // });
+
+      // const updateCost = performance.now() - updateStart;
+      // if (updateCost > 3) {
+      //   console.log(`[trace][web-chart-update] symbol=${candle.symbol} tf=${candle.timeframe} costMs=${updateCost.toFixed(2)}`);
+      // }
+
+      // lastChartTimeRef.current = t;
     });
 
     return () => {
@@ -155,6 +257,7 @@ export default function App() {
   useEffect(() => {
     setTick(null);
     setLastCandle(null);
+    activeCandleRef.current = null;
     lastChartTimeRef.current = null;
     seriesRef.current?.setData([]);
   }, [selectedSymbol, selectedTimeframe, seriesRef]);

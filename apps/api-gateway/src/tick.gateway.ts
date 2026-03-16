@@ -1,5 +1,5 @@
 import { OnGatewayConnection, OnGatewayDisconnect, WebSocketGateway, WebSocketServer } from "@nestjs/websockets";
-import { CandleUpsertedEvent, TickEvent } from "@wts/common";
+import { CandleEvent, TickEvent } from "@wts/common";
 import { Server } from "socket.io";
 
 @WebSocketGateway({
@@ -26,7 +26,7 @@ export class TickGateway implements OnGatewayConnection, OnGatewayDisconnect {
         this.server.emit("tick", tick);
     }
 
-    broadcastCandle(candle: CandleUpsertedEvent) {
+    broadcastCandle(candle: CandleEvent) {
         this.server.emit("candle", candle);
     }
 }

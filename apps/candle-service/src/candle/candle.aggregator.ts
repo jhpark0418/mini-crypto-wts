@@ -1,17 +1,21 @@
-import { CandleUpsertedEvent, TickEvent } from "@wts/common";
+import { CandleClosedEvent, CandleOpenedEvent, TickEvent } from "@wts/common";
 import { CandleState } from "./candle.types.js";
 import { bucketStartMs, timeframeToMs, toIso, toMs } from "./candle.util.js";
 import { Symbol, CandleTimeframe } from "@wts/common";
-import { toCandleUpsertedEvent } from "./candle.mapper.js";
+import { toCandleClosedEvent, toCandleOpenedEvent } from "./candle.mapper.js";
 
-export class candleAggregator {
+export class CandleAggregator {
     private stateBySymbol = new Map<Symbol, CandleState>();
 
     constructor(
         private readonly timeframe: CandleTimeframe
     ) {}
 
-    onTick(tick: TickEvent): { upserted: CandleUpsertedEvent; closed?: CandleUpsertedEvent } {
+    getTimeframe() {
+        return this.timeframe;
+    }
+
+    onTick(tick: TickEvent): { opened?: CandleOpenedEvent; closed?: CandleClosedEvent } {
         const tsMs = toMs(tick.ts);
         const intervalMs = timeframeToMs(this.timeframe);
         const openTimeMs = bucketStartMs(tsMs, intervalMs);
@@ -22,7 +26,7 @@ export class candleAggregator {
 
         // 처음이거나 버킷이 바뀌면 기존 state를 closed로 내보내고 새로 시작
         if (!existed || existed.openTimeMs !== openTimeMs) {
-            const closed = existed ? toCandleUpsertedEvent(existed) : undefined;
+            const closed = existed ? toCandleClosedEvent(existed) : undefined;
 
             const next: CandleState = {
                 symbol: tick.symbol,
@@ -41,7 +45,7 @@ export class candleAggregator {
 
             this.stateBySymbol.set(tick.symbol, next);
 
-            return { upserted: toCandleUpsertedEvent(next), closed };
+            return { opened: toCandleOpenedEvent(next), closed };
         }
 
         existed.high = Math.max(existed.high, price);
@@ -51,7 +55,7 @@ export class candleAggregator {
         existed.trades += 1;
         existed.lastTickMs = tsMs;
 
-        return { upserted: toCandleUpsertedEvent(existed) };
+        return {};
     }
 
     /**
@@ -59,14 +63,14 @@ export class candleAggregator {
      * - tick이 끊기면 "버킷 변경" 이벤트가 안와서 캔들이 안닫힐 수 있음
      * - now가 다음 버킷으로 넘어갔다면 현재 state를 closed로 내보냄냄
      */
-    flushIfExpired(nowMs: number): CandleUpsertedEvent[] {
-        const out: CandleUpsertedEvent[] = [];
+    flushIfExpired(nowMs: number): CandleClosedEvent[] {
+        const out: CandleClosedEvent[] = [];
         const intervalMs = timeframeToMs(this.timeframe);
         const currentBucketStart = bucketStartMs(nowMs, intervalMs);
 
         for (const [symbol, st] of this.stateBySymbol.entries()) {
             if (st.openTimeMs < currentBucketStart) {
-                out.push(toCandleUpsertedEvent(st));
+                out.push(toCandleClosedEvent(st));
                 this.stateBySymbol.delete(symbol);
             }
         }

@@ -4,6 +4,19 @@
 이 프로젝트는 실제 거래 시스템에서 사용하는 데이터 파이프라인 구조를 학습하기 위해 구현한 이벤트 기반 시스템입니다.
 실시간 Tick 데이터를 Kafka 스트림으로 처리하여 멀티 타임프레임 Candle 데이터를 생성하고, WebSocket을 통해 클라이언트 차트에 실시간으로 전달합니다. 또한 서비스 시작 시 Binance REST API를 이용하여 과거 캔들 데이터를 Backfill하여 DB에 저장하고 이후 실시간 스트림과 결합하여 차트를 구성합니다.
 
+---
+
+# Key Feature
+
+```
+Kafka 기반 이벤트 스트리밍 데이터 파이프라인
+Binance WebSocket 실시간 시세 데이터 수집
+멀티 타임프레임 Candle Aggregation Engine
+WebSocket 기반 실시간 차트 업데이트
+Historical + Realtime 데이터 결합 전략
+멀티 심볼 지원 (BTCUSDT, ETHUSDT)
+```
+
 <!-- ---
 
 # Demo
@@ -175,11 +188,31 @@ Kafka Publish
 ---
 
 # Historical Data Strategy
+
 차트 초기 로딩은 Binance REST API를 사용합니다.
 ```
 History → Binance REST
 Realtime → WebSocket
 ```
+
+차트 초기 로딩
+```
+Binance REST API
+↓
+Historical candles
+↓
+setData()
+```
+
+실시간 업데이트
+```
+Kafka Event
+↓
+WebSocket
+↓
+update()
+```
+
 이 방식은 다음 장점을 가집니다.
 
 - 서버 부하 감소
@@ -268,69 +301,131 @@ Event-driven architecture
 ```
 mini-crypto-wts
 │
-├─ market-ingestor
-│   └─ Binance WebSocket tick collector
-│
-├─ candle-service
-│   ├─ candle aggregation engine
-│   ├─ Binance REST candle backfill
-│   └─ PostgreSQL persistence
-│
-├─ api-gateway
-│   ├─ WebSocket server
-│   └─ Kafka consumer
-│
-├─ frontend
-│   ├─ React
-│   └─ lightweight-charts
-│
-└─ common
-    └─ shared event types
+├─ apps
+│   ├─ market-ingestor
+│   │   └─ Binance WebSocket tick collector
+│   │
+│   ├─ candle-service
+│   │   ├─ candle aggregation engine
+│   │   ├─ Binance REST candle backfill
+│   │   └─ PostgreSQL persistence
+│   │
+│   ├─ api-gateway
+│   │   ├─ WebSocket server
+│   │   └─ Kafka consumer
+│   │
+│   └─ frontend
+│       ├─ React
+│       └─ lightweight-charts
+└─ libs
+    └─ common
+        └─ shared event types
 ```
 
 ---
 
 # Current Implementation Stage
 
-완료된 단계
-
 ```text
-Step1  Project setup
-Step2  Kafka tick pipeline
-Step3  WebSocket realtime streaming
-Step4  Candle aggregation service
-Step5  Multi timeframe candle generation
-Step6  Binance backfill + PostgreSQL persistence
+Step1  프로젝트 기본 구조 구성
+Step2  Kafka 기반 Tick 이벤트 스트리밍 파이프라인 구축
+Step3  Binance WebSocket을 통한 실시간 거래 데이터 수집
+Step4  Tick 데이터를 기반으로 한 Candle Aggregation 서비스 구현
+Step5  멀티 타임프레임 캔들 생성 (1m / 5m / 30m / 1h / 12h / 1d)
+Step6  PostgreSQL을 이용한 캔들 데이터 저장 및 히스토리 관리
+Step7  시스템 안정화 및 멀티 심볼(BTCUSDT, ETHUSDT) 지원
 ```
 
 ---
 
 # Future Roadmap
 
-## Step7
-
-Internal Candle History API
-```
-GET /api/candles
-```
-
 ## Step8
 
-Orderbook Simulation
+Orderbook Stream
+실시간 호가(Orderbook) 데이터 스트리밍 기능을 추가합니다.
 ```text
-bid / ask
-market depth
+- Binance Depth Stream 수신
+- Kafka를 통한 호가 데이터 이벤트 스트리밍
+- WebSocket을 통한 실시간 호가 데이터 전달
+- 프론트엔드 Orderbook UI 구현
 ```
 
 ## Step9
 
 Matching Engine
-
+간단한 **거래 매칭 엔진(Matching Engine)**을 구현합니다.
 ```text
-limit order
-market order
-trade execution
+- Limit Order
+- Market Order
+- 주문 매칭 로직
+- 체결 이벤트 생성
+- 체결 데이터 스트리밍
 ```
+
+## Step10
+
+Orderbook Simulation
+사용자 주문을 기반으로 가상 Orderbook을 생성하는 기능을 구현합니다.
+```text
+- 사용자 주문 기반 Orderbook 구성
+- Bid / Ask 큐 관리
+- 체결 이벤트 생성
+- 주문 상태 관리
+```
+
+---
+
+# Design Decisions
+## Why Event-Driven Architecture?
+
+실시간 거래 데이터는 지속적으로 발생하는 이벤트 스트림입니다. 
+
+이벤트 기반 구조를 사용하면
+
+```
+서비스 간 결합도 감소
+비동기 데이터 처리
+서비스 확장성 향상
+```
+
+## Why Kafka?
+
+Kafka는 대용량 이벤트 스트림을 처리하기 위한 메시지 브로커입니다.
+
+장점
+```
+High Throughput
+메시지 내구성
+Consumer 확장 가능
+이벤트 기반 서비스 분리
+```
+
+## Why Candle Aggregation Service?
+
+Tick 데이터는 매우 높은 빈도로 발생합니다.
+
+따라서 차트 시스템에서는 Tick → Candle 집계 과정이 필요합니다.
+
+이를 별도의 서비스로 분리함으로써
+```
+Aggregation 로직 독립
+차트 서비스와 데이터 처리 분리
+멀티 타임프레임 처리 가능
+```
+
+## Why WebSocket?
+
+차트 데이터는 실시간 업데이트가 필요합니다.
+
+WebSocket을 사용하면
+```
+서버 → 클라이언트 Push 가능
+낮은 네트워크 오버헤드
+실시간 데이터 전달
+```
+
+---
 
 # How to Run
 
@@ -370,5 +465,169 @@ npm -w apps/web run dev
 * Candle aggregation engine
 * Historical + Realtime chart loading
 * Exchange data ingestion
+
+---
+
+# Performance & Troubleshooting
+
+실시간 데이터 스트리밍 시스템을 구현하는 과정에서 몇 가지 성능 및 운영 관련 문제를 경험했고 이를 해결했습니다.
+
+---
+
+# Kafka Consumer Lag
+
+### 문제
+
+Kafka Consumer가 재시작된 이후 과거 메시지를 계속 소비하면서 **실시간 데이터가 지연되는 현상**이 발생했습니다.
+
+증상
+
+```
+tick lag(ms) ≈ 수백만 ms
+```
+
+차트가 몇 분 이상 과거 데이터를 표시하는 문제가 발생했습니다.
+
+### 원인
+
+Kafka Topic에 기존 메시지가 남아있었고
+Consumer가 이전 offset부터 다시 읽기 시작하면서 backlog가 발생했습니다.
+
+### 해결
+
+Kafka Topic을 정리하여 backlog 메시지를 제거했습니다.
+
+```bash
+kafka-delete-records
+```
+
+또한 Consumer group offset 상태를 확인하여
+실시간 메시지를 기준으로 처리하도록 조정했습니다.
+
+---
+
+# Candle Timestamp Issue
+
+### 문제
+
+Candle 데이터 저장 과정에서 다음과 같은 오류가 발생했습니다.
+
+```
+invalid input syntax for type timestamp
+```
+
+### 원인
+
+Tick timestamp 처리 과정에서 잘못된 값이 전달되어
+PostgreSQL에 `Invalid Date`가 저장되려고 했습니다.
+
+### 해결
+
+Tick 이벤트의 timestamp를 ISO 형식으로 변환하여 저장하도록 수정했습니다.
+
+```ts
+new Date(tick.ts).toISOString()
+```
+
+---
+
+# Real-time Chart Update Issue
+
+### 문제
+
+차트가 실시간으로 업데이트되지 않고
+마지막 Candle만 표시되는 현상이 발생했습니다.
+
+### 원인
+
+차트 업데이트 로직에서 **현재 Candle update와 새로운 Candle insert를 구분하지 못하는 문제**가 있었습니다.
+
+### 해결
+
+같은 openTime의 Candle은 update하고
+새로운 구간이 시작되면 insert하도록 수정했습니다.
+
+```
+same openTime → update
+new openTime → insert
+```
+
+---
+
+# Multi-Symbol Streaming Issue
+
+### 문제
+
+초기 구현에서는 BTCUSDT만 정상적으로 처리되고
+ETHUSDT는 Candle 데이터가 생성되지 않는 문제가 있었습니다.
+
+### 원인
+
+Tick topic 처리 로직에서 multi-symbol 처리가 제대로 이루어지지 않았습니다.
+
+### 해결
+
+symbol 목록을 기반으로 Tick 이벤트를 처리하도록 수정했습니다.
+
+```
+BTCUSDT
+ETHUSDT
+```
+
+이를 통해 multi-symbol candle aggregation을 지원하게 되었습니다.
+
+---
+
+# Kafka Publish Latency
+
+Candle 이벤트 publish 과정에서 약 **10~30ms 정도의 latency**가 발생하는 것을 확인했습니다.
+
+예시 로그
+
+```
+[trace][candle-publish] symbol=BTCUSDT tf=1m costMs=21
+```
+
+현재 구조에서는 각 Tick마다 여러 timeframe candle 이벤트가 생성되기 때문에
+publish 호출이 증가할 수 있습니다.
+
+향후 개선 가능 사항
+
+```
+Kafka batch publish
+publish buffer
+producer optimization
+```
+
+---
+
+# System Observability
+
+시스템 동작을 분석하기 위해 주요 지점에 trace 로그를 추가했습니다.
+
+추적 포인트
+
+```
+ingestor source lag
+candle publish latency
+gateway event lag
+websocket receive lag
+```
+
+이를 통해 **데이터 파이프라인 전체의 지연을 분석**할 수 있습니다.
+
+---
+
+# Lessons Learned
+
+이 프로젝트를 통해 다음과 같은 점을 학습했습니다.
+
+```
+Kafka 기반 이벤트 스트리밍 시스템 설계
+실시간 데이터 파이프라인 구성
+Tick → Candle 데이터 집계 구조
+WebSocket 기반 실시간 UI 업데이트
+Kafka Consumer Lag 분석 및 해결
+```
 
 ---
