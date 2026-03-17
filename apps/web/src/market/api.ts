@@ -1,6 +1,6 @@
 import type { UTCTimestamp } from "lightweight-charts";
 import type { CandleHistoryItem } from "./types";
-import type { CandleTimeframe, Symbol } from "@wts/common";
+import type { CandleTimeframe, OrderbookSnapshotEvent, Symbol } from "@wts/common";
 
 
 const API_BASE_URL = "http://localhost:3000";
@@ -41,11 +41,25 @@ export async function fetchActiveCandle(symbol: Symbol, timeframe: CandleTimefra
         `${API_BASE_URL}/api/market/active-candle?symbol=${symbol}&timeframe=${timeframe}`
     );
 
+    if (res.status === 404) return null;
+
     if (!res.ok) {
         throw new Error(`failed to fetch active candle: ${res.status}`);
     }
 
     return res.json();
+}
+
+export async function fetchOrderbook(symbol: Symbol) {
+    const res = await fetch(
+        `${API_BASE_URL}/api/market/orderbook?symbol=${symbol}`
+    );
+
+    if (!res.ok) {
+        throw new Error(`failed to fetch orderbook: ${res.status}`);
+    }
+
+    return (await res.json()) as OrderbookSnapshotEvent;
 }
 
 export { API_BASE_URL };

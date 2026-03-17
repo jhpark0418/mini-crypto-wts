@@ -2,7 +2,7 @@ import { type UTCTimestamp } from 'lightweight-charts';
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { io } from "socket.io-client";
 import { useCandleChart } from './hooks/useCandleChart';
-import { API_BASE_URL, fetchActiveCandle, fetchCandleHistory } from './market/api';
+import { API_BASE_URL, fetchActiveCandle, fetchCandleHistory, fetchOrderbook } from './market/api';
 import { BINANCE_TIMEFRAMES, SYMBOLS, type CandleTimeframe, type CandleEvent, type Symbol, type TickEvent, type OrderbookLevel, type OrderbookSnapshotEvent } from '@wts/common';
 import { type ActiveCandle, type CandleHistoryItem } from './market/types';
 
@@ -27,6 +27,7 @@ export default function App() {
 
   const selectedSymbolRef = useRef<Symbol>(selectedSymbol);
   const selectedTimeframeRef = useRef<CandleTimeframe>(selectedTimeframe);
+  const orderbookRef = useRef<OrderbookSnapshotEvent | null>(null);
 
   const [tick, setTick] = useState<TickEvent | null>(null);
   const [lastCandle, setLastCandle] = useState<CandleHistoryItem | null>(null);
@@ -101,6 +102,59 @@ export default function App() {
     }));
   }
 
+  function applyOrderbookIfNewer(
+    next: OrderbookSnapshotEvent,
+    currentSymbol: Symbol,
+    orderbookRef: { current: OrderbookSnapshotEvent | null },
+    setOrderbook: (v: OrderbookSnapshotEvent) => void
+  ) {
+    if (next.symbol !== currentSymbol) return;
+
+    const current = orderbookRef.current;
+
+    if (!current || next.ts > current.ts) {
+      orderbookRef.current = next;
+      setOrderbook(next);
+    }
+  }
+
+  function applyActiveCandleIfCurrent(next: ActiveCandle) {
+    if (next.symbol !== selectedSymbolRef.current) return;
+    if (next.timeframe !== selectedTimeframeRef.current) return;
+
+    const current = activeCandleRef.current;
+
+    if (current && next.openTime < current.openTime) {
+      return;
+    }
+
+    activeCandleRef.current = next;
+    updateSeriesFromCandle(next);
+    setLastCandle({...next});
+  }
+
+  function applyTickToActiveCandle(tick: TickEvent) {
+    const active = activeCandleRef.current;
+    if (!active) return;
+    if (active.symbol !== tick.symbol) return;
+    if (active.timeframe !== selectedTimeframeRef.current) return;
+
+    const tickMs = new Date(tick.ts).getTime();
+    if (tickMs < active.openTime || tickMs > active.closeTime) return;
+
+    const next: ActiveCandle = {
+      ...active,
+      high: Math.max(active.high, tick.price),
+      low: Math.min(active.low, tick.price),
+      close: tick.price,
+      volume: active.volume + (tick.qty ?? 0)
+    };
+
+    activeCandleRef.current = next;
+    updateSeriesFromCandle(next);
+    setLastCandle({...next});
+  }
+
   useEffect(() => {
     selectedSymbolRef.current = selectedSymbol;
     selectedTimeframeRef.current = selectedTimeframe;
@@ -114,8 +168,6 @@ export default function App() {
 
     (async () => {
       try {
-        // const candles = await fetchCandleHistory(selectedSymbol, selectedTimeframe, 200);
-
         const [candles, activeSnapshot] = await Promise.all([
           fetchCandleHistory(selectedSymbol, selectedTimeframe, 200),
           fetchActiveCandle(selectedSymbol, selectedTimeframe)
@@ -152,16 +204,6 @@ export default function App() {
         
         seriesRef.current.setData(chartData);
 
-        // seriesRef.current.setData(
-        //   candles.map((item) => ({
-        //     time: Math.floor(new Date(item.openTime).getTime() / 1000) as UTCTimestamp,
-        //     open: item.open,
-        //     high: item.high,
-        //     low: item.low,
-        //     close: item.close
-        //   }))
-        // );
-
         const lastChartBar = chartData[chartData.length - 1];
         lastChartTimeRef.current = lastChartBar ? Number(lastChartBar.time) : null;
 
@@ -196,7 +238,7 @@ export default function App() {
           : null;
 
         setLastCandle(activeLoadedCandle ?? lastLoadedCandle);
-        activeCandleRef.current = activeLoadedCandle;
+        activeCandleRef.current = activeLoadedCandle ?? lastLoadedCandle;
 
       } catch (error) {
         console.error("failed to load candle history:", error);
@@ -224,45 +266,54 @@ export default function App() {
   }, [selectedSymbol, selectedTimeframe, chartRef, seriesRef]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const snapshot = await fetchOrderbook(selectedSymbol);
+
+        if (cancelled) return;
+
+        applyOrderbookIfNewer(snapshot, selectedSymbolRef.current, orderbookRef, setOrderbook);
+
+      } catch (error) {
+        console.error("failed to load orderbook snapshot:", error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSymbol]);
+
+  useEffect(() => {
     const socket = io(`${API_BASE_URL}/ws`, {
       transports: ["websocket"]
     });
 
-    socket.on("connect", () => setConnected(true));
+    socket.on("connect", async () => {
+      setConnected(true);
+
+      try {
+        const snapshot = await fetchOrderbook(selectedSymbolRef.current);
+
+        applyOrderbookIfNewer(snapshot, selectedSymbolRef.current, orderbookRef, setOrderbook);
+
+      } catch (error) {
+        console.error("failed to refresh orderbook after reconnect:", error);
+      }
+    });
+
     socket.on("disconnect", () => setConnected(false));
 
     socket.on("tick", (msg: TickEvent) => {
       if (msg.symbol !== selectedSymbolRef.current) return;
-      if (Math.random() < 0.01) {
-        console.log(`[trace][web-tick] symbol=${msg.symbol} lagMs=${Date.now() - new Date(msg.ts).getTime()}`);
-      }
+      // if (Math.random() < 0.01) {
+      //   console.log(`[trace][web-tick] symbol=${msg.symbol} lagMs=${Date.now() - new Date(msg.ts).getTime()}`);
+      // }
 
       setTick(msg);
-
-      const active = activeCandleRef.current;
-      if (!active) return;
-      if (active.symbol !== msg.symbol) return;
-      if (active.timeframe !== selectedTimeframeRef.current) return;
-
-      const tickMs = new Date(msg.ts).getTime();
-
-      // 현재 활성 봉 구간 안에 있는 tick만 반영
-      if (tickMs < active.openTime || tickMs > active.closeTime) return;
-
-      active.high = Math.max(active.high, msg.price);
-      active.low = Math.min(active.low, msg.price);
-      active.close = msg.price;
-      active.volume += msg.qty ?? 0;
-
-      seriesRef.current?.update({
-        time: Math.floor(active.openTime / 1000) as UTCTimestamp,
-        open: active.open,
-        high: active.high,
-        low: active.low,
-        close: active.close
-      });
-
-      setLastCandle({...active});
+      applyTickToActiveCandle(msg);
     });
 
     socket.on("candle", (event: CandleEvent) => {
@@ -271,33 +322,35 @@ export default function App() {
       if (isHistoryLoadingRef.current) return;
 
       const candle = toDisplayCandle(event);
-      updateSeriesFromCandle(candle);
+      
+      applyActiveCandleIfCurrent(candle);
+      // if (!applied) return;
 
-      if (event.type === "CANDLE_OPENED") {
-        activeCandleRef.current = candle;
-      } else {
-        const active = activeCandleRef.current;
-        if (
-          active &&
-          active.symbol === event.symbol &&
-          active.timeframe === event.timeframe &&
-          active.openTime === event.openTime
-        ) {
-          activeCandleRef.current = null;
-        }
+      // if (event.type === "CANDLE_OPENED") {
+      //   activeCandleRef.current = candle;
+      // } else {
+      //   const active = activeCandleRef.current;
 
-        setLastCandle(candle);
-      }
+      //   if (
+      //     active &&
+      //     active.symbol === event.symbol &&
+      //     active.timeframe === event.timeframe &&
+      //     active.openTime === event.openTime
+      //   ) {
+      //     activeCandleRef.current = null;
+      //   }
+      // }
     });
 
     socket.on("orderbook", (msg: OrderbookSnapshotEvent) => {
       if (msg.symbol !== selectedSymbolRef.current) return;
 
-      if (Math.random() < 0.02) {
-        console.log(`[trace][web-orderbook] symbol=${msg.symbol} bids=${msg.bids.length} asks=${msg.asks.length}`);
-      }
+      // if (Math.random() < 0.02) {
+      //   console.log(`[trace][web-orderbook] symbol=${msg.symbol} bids=${msg.bids.length} asks=${msg.asks.length}`);
+      // }
 
-      setOrderbook(msg);
+      applyOrderbookIfNewer(msg, selectedSymbolRef.current, orderbookRef, setOrderbook);
+
     });
 
     return () => {
@@ -308,11 +361,15 @@ export default function App() {
   useEffect(() => {
     setTick(null);
     setLastCandle(null);
-    setOrderbook(null);
     activeCandleRef.current = null;
     lastChartTimeRef.current = null;
     seriesRef.current?.setData([]);
   }, [selectedSymbol, selectedTimeframe, seriesRef]);
+
+  useEffect(() => {
+    orderbookRef.current = null;
+    setOrderbook(null);
+  }, [selectedSymbol]);
 
   const tickPriceText = useMemo(() => {
     return tick ? tick.price.toFixed(2) : "-";

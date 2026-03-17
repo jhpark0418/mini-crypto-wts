@@ -39,3 +39,14 @@ export async function publishJson(
         messages: [{ value: JSON.stringify(payload) }]
     });
 }
+
+export async function createAdmin(params: { clientId: string, brokers: string[] }) {
+    const kafka = new Kafka({
+        clientId: params.clientId,
+        brokers: params.brokers
+    });
+
+    const admin = kafka.admin();
+    await admin.connect();
+    return admin;
+}

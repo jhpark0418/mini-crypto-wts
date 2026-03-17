@@ -29,6 +29,7 @@
     "@wts/common": "^0.0.1",
     "@wts/db": "^0.0.1",
     "@wts/kafka": "^0.0.1",
+    "ioredis": "^5.10.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.3"

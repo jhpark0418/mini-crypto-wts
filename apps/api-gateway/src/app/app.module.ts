@@ -6,6 +6,7 @@ import { CandleEntity } from 'src/candles/entities/candle.entity';
 import { MarketConsumerService } from 'src/market-consumer.service';
 import { MarketGateway } from 'src/market.gateway';
 import { MarketModule } from 'src/market/market.module';
+import { RedisModule } from 'src/redis/redis.module';
 
 @Module({
     imports: [
@@ -27,8 +28,8 @@ import { MarketModule } from 'src/market/market.module';
             })
         }),
         CandlesModule,
-        MarketModule
+        MarketModule,
+        RedisModule
     ],
-    providers: [MarketConsumerService, MarketGateway]
 })
 export class AppModule {}
