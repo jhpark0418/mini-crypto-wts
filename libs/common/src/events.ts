@@ -21,6 +21,20 @@ export interface CandleOpenedEvent {
   closeTime: number;
 }
 
+export interface CandleUpdatedEvent {
+  eventId: string;
+  type: "CANDLE_UPDATED";
+  symbol: Symbol;
+  timeframe: CandleTimeframe;
+  openTime: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  closeTime: number;
+}
+
 export interface CandleClosedEvent {
   eventId: string;
   type: "CANDLE_CLOSED";
@@ -35,7 +49,22 @@ export interface CandleClosedEvent {
   closeTime: number;
 }
 
-export type CandleEvent = CandleOpenedEvent | CandleClosedEvent;
+export type CandleEvent = 
+  | CandleOpenedEvent 
+  | CandleUpdatedEvent 
+  | CandleClosedEvent;
+
+export type ActiveCandleSnapshot = {
+  symbol: Symbol;
+  timeframe: CandleTimeframe;
+  openTime: string;
+  closeTime: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
 
 export interface OrderbookLevel {
   price: number;
@@ -52,4 +81,9 @@ export interface OrderbookSnapshotEvent {
   source: "binance";
 }
 
-export type MarketEvent = | TickEvent | CandleOpenedEvent | CandleClosedEvent | OrderbookSnapshotEvent;
+export type MarketEvent = 
+  | TickEvent 
+  | CandleOpenedEvent 
+  | CandleUpdatedEvent
+  | CandleClosedEvent 
+  | OrderbookSnapshotEvent;

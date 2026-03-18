@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { CandleOpenedEvent, CandleClosedEvent } from "@wts/common";
+import { CandleOpenedEvent, CandleClosedEvent, CandleUpdatedEvent } from "@wts/common";
 import { CandleState } from "./candle.types.js";
 
 export function toCandleOpenedEvent(state: CandleState): CandleOpenedEvent {
@@ -12,6 +12,22 @@ export function toCandleOpenedEvent(state: CandleState): CandleOpenedEvent {
         open: state.open,
         closeTime: state.openTimeMs + state.intervalMs - 1
     };
+}
+
+export function toCandleUpdatedEvent(state: CandleState): CandleUpdatedEvent {
+    return {
+        eventId: randomUUID(),
+        type: "CANDLE_UPDATED",
+        symbol: state.symbol,
+        timeframe: state.timeframe,
+        openTime: state.openTimeMs,
+        open: state.open,
+        high: state.high,
+        low: state.low,
+        close: state.close,
+        volume: state.volume,
+        closeTime: state.openTimeMs + state.intervalMs - 1
+    }
 }
 
 export function toCandleClosedEvent(state: CandleState): CandleClosedEvent {

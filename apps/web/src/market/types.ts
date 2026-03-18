@@ -4,7 +4,6 @@ export type CandleHistoryItem = {
   symbol: Symbol;
   timeframe: CandleTimeframe;
   openTime: number;
-  closeTime: number;
   open: number;
   high: number;
   low: number;

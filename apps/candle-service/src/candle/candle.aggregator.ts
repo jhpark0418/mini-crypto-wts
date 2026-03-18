@@ -1,8 +1,8 @@
-import { CandleClosedEvent, CandleOpenedEvent, TickEvent } from "@wts/common";
+import { CandleClosedEvent, CandleOpenedEvent, CandleUpdatedEvent, TickEvent } from "@wts/common";
 import { CandleState } from "./candle.types.js";
 import { bucketStartMs, timeframeToMs, toIso, toMs } from "./candle.util.js";
 import { Symbol, CandleTimeframe } from "@wts/common";
-import { toCandleClosedEvent, toCandleOpenedEvent } from "./candle.mapper.js";
+import { toCandleClosedEvent, toCandleOpenedEvent, toCandleUpdatedEvent } from "./candle.mapper.js";
 
 export class CandleAggregator {
     private stateBySymbol = new Map<Symbol, CandleState>();
@@ -40,7 +40,8 @@ export class CandleAggregator {
                 close: price,
                 volume: qty,
                 trades: 1,
-                lastTickMs: tsMs
+                lastTickMs: tsMs,
+                dirty: true
             }
 
             this.stateBySymbol.set(tick.symbol, next);
@@ -54,6 +55,7 @@ export class CandleAggregator {
         existed.volume += qty;
         existed.trades += 1;
         existed.lastTickMs = tsMs;
+        existed.dirty = true;
 
         return {};
     }
@@ -76,5 +78,30 @@ export class CandleAggregator {
         }
 
         return out;
+    }
+
+    collectDirtyUpdates(): CandleUpdatedEvent[] {
+        const out: CandleUpdatedEvent[] = [];
+
+        for (const state of this.stateBySymbol.values()) {
+            if (!state.dirty) continue;
+
+            out.push(toCandleUpdatedEvent(state));
+            state.dirty = false;
+        }
+
+        return out;
+    }
+
+    getActiveStates(): CandleState[] {
+        return [...this.stateBySymbol.values()];
+    }
+
+    restoreState(state: CandleState) {
+        this.stateBySymbol.set(state.symbol, state);
+    }
+
+    removeState(symbol: Symbol) {
+        this.stateBySymbol.delete(symbol);
     }
 }

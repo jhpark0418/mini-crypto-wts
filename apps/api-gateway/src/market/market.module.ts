@@ -3,7 +3,7 @@ import { MarketController } from './market.controller';
 import { MarketConsumerService } from 'src/market-consumer.service';
 import { MarketGateway } from 'src/market.gateway';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { CandleEntity } from 'src/candles/entities/candle.entity';
+import { CandleEntity } from '@wts/db';
 import { TickConsumerService } from 'src/tick-consumer.service';
 
 @Module({

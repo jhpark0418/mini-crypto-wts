@@ -1,6 +1,6 @@
-import { CandleTimeframe, Symbol } from "@wts/common";
+import { CandleTimeframe, Symbol } from "./market.js";
 
-export const redisKeys = {
+export const cacheKeys = {
     activeCandle: (symbol: Symbol, timeframe: CandleTimeframe) => 
         `active-candle:${symbol}:${timeframe}`,
 

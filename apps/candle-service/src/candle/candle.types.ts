@@ -13,4 +13,5 @@ export type CandleState = {
     volume: number;
     trades: number;          // 틱 개수
     lastTickMs: number;      // 마지막 틱 시간(타이머 fulsh 판단용)
+    dirty: boolean;
   };

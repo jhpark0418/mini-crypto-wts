@@ -33,7 +33,7 @@ export default function App() {
   const [lastCandle, setLastCandle] = useState<CandleHistoryItem | null>(null);
   const [orderbook, setOrderbook] = useState<OrderbookSnapshotEvent | null>(null);
   
-  const { chartContainerRef, chartRef, seriesRef } = useCandleChart(selectedTimeframe);
+  const { chartContainerRef, chartRef, seriesRef, tooltip } = useCandleChart(selectedTimeframe);
   
   const activeCandleRef = useRef<ActiveCandle | null>(null);
   const lastChartTimeRef = useRef<number | null>(null);
@@ -127,28 +127,6 @@ export default function App() {
     if (current && next.openTime < current.openTime) {
       return;
     }
-
-    activeCandleRef.current = next;
-    updateSeriesFromCandle(next);
-    setLastCandle({...next});
-  }
-
-  function applyTickToActiveCandle(tick: TickEvent) {
-    const active = activeCandleRef.current;
-    if (!active) return;
-    if (active.symbol !== tick.symbol) return;
-    if (active.timeframe !== selectedTimeframeRef.current) return;
-
-    const tickMs = new Date(tick.ts).getTime();
-    if (tickMs < active.openTime || tickMs > active.closeTime) return;
-
-    const next: ActiveCandle = {
-      ...active,
-      high: Math.max(active.high, tick.price),
-      low: Math.min(active.low, tick.price),
-      close: tick.price,
-      volume: active.volume + (tick.qty ?? 0)
-    };
 
     activeCandleRef.current = next;
     updateSeriesFromCandle(next);
@@ -313,7 +291,6 @@ export default function App() {
       // }
 
       setTick(msg);
-      applyTickToActiveCandle(msg);
     });
 
     socket.on("candle", (event: CandleEvent) => {
@@ -322,24 +299,20 @@ export default function App() {
       if (isHistoryLoadingRef.current) return;
 
       const candle = toDisplayCandle(event);
-      
       applyActiveCandleIfCurrent(candle);
-      // if (!applied) return;
 
-      // if (event.type === "CANDLE_OPENED") {
-      //   activeCandleRef.current = candle;
-      // } else {
-      //   const active = activeCandleRef.current;
+      if (event.type === "CANDLE_CLOSED") {
+        const active = activeCandleRef.current;
 
-      //   if (
-      //     active &&
-      //     active.symbol === event.symbol &&
-      //     active.timeframe === event.timeframe &&
-      //     active.openTime === event.openTime
-      //   ) {
-      //     activeCandleRef.current = null;
-      //   }
-      // }
+        if (
+          active &&
+          active.symbol === event.symbol &&
+          active.timeframe === event.timeframe &&
+          active.openTime === event.openTime
+        ) {
+          activeCandleRef.current = null;
+        }
+      }
     });
 
     socket.on("orderbook", (msg: OrderbookSnapshotEvent) => {
@@ -459,16 +432,43 @@ export default function App() {
       >
         <div>
           <h3>Chart</h3>
-          <div
-            ref={chartContainerRef}
-            style={{
-              width: "100%",
-              height: 420,
-              border: "1px solid #ddd",
-              borderRadius: 12,
-              overflow: "hidden",
-            }}
-          />
+          <div style={{position: "relative"}}>
+            <div
+              ref={chartContainerRef}
+              style={{
+                width: "100%",
+                height: 420,
+                border: "1px solid #ddd",
+                borderRadius: 12,
+                overflow: "hidden",
+              }}
+            />
+
+            {tooltip?.visible && (
+              <div
+                style={{
+                  position: "absolute",
+                  left: tooltip.x,
+                  top: tooltip.y,
+                  zIndex: 20,
+                  pointerEvents: "none",
+                  background: "rgba(17, 24, 39, 0.92)",
+                  color: "#fff",
+                  padding: "8px 10px",
+                  borderRadius: "8px",
+                  fontSize: "12px",
+                  lineHeight: 1.5,
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.18)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <div>O {tooltip.open.toFixed(2)}</div>
+                <div>H {tooltip.high.toFixed(2)}</div>
+                <div>L {tooltip.low.toFixed(2)}</div>
+                <div>C {tooltip.close.toFixed(2)}</div>
+              </div>
+            )}
+          </div>
         </div>
 
         <div>

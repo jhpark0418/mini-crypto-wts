@@ -2,12 +2,15 @@ import "reflect-metadata";
 import "./env.js";
 import { createConsumer, createProducer } from "@wts/kafka";
 import { CandleAggregator } from "./candle/candle.aggregator.js"
-import { TickEvent, Symbol, CandleTimeframe, SYMBOLS, BINANCE_TIMEFRAMES, CandleEvent } from "@wts/common";
+import { TickEvent, Symbol, CandleTimeframe, SYMBOLS, BINANCE_TIMEFRAMES, CandleEvent, cacheKeys } from "@wts/common";
 import { AppDataSource } from "./db/data-source.js";
 import { upsertCandle } from "./db/repositories/candle.repository.js";
 import { backfillCandles } from "./binance/backfill.service.js";
+import { restoreActiveState } from "./active-candle/active-candle.restore.js";
+import { getRedis } from "./redis/redis.client.js";
 
 const brokers = (process.env.KAFKA_BROKERS ?? "localhost:9092").split(",");
+const redis = getRedis();
 
 function candleTopic(symbol: Symbol, timeframe: CandleTimeframe) {
     return `candle.${symbol}.${timeframe}`;
@@ -55,10 +58,84 @@ async function main() {
     console.log("[candle-service] consumer/producer connected");
 
     const aggregators = BINANCE_TIMEFRAMES.map((tf) => new CandleAggregator(tf));
+    
+    for (const agg of aggregators) {
+        for (const symbol of SYMBOLS) {
+            const restored = await restoreActiveState(symbol, agg.getTimeframe());
+            if (restored) {
+                agg.restoreState(restored);
+            }
+        }
+    }
 
     for (const symbol of SYMBOLS) {
         await consumer.subscribe({ topic: `tick.${symbol}`, fromBeginning: false });
     }
+
+    const flushTimer = setInterval(async () => {
+        const now = Date.now();
+        const timerStart = performance.now();
+
+        for (const agg of aggregators) {
+            const expired = agg.flushIfExpired(now);
+
+            for (const ev of expired) {
+                const dbStart = performance.now();
+
+                await upsertCandle({
+                    symbol: ev.symbol,
+                    timeframe: ev.timeframe,
+                    openTime: new Date(ev.openTime).toISOString(),
+                    open: ev.open,
+                    high: ev.high,
+                    low: ev.low,
+                    close: ev.close,
+                    volume: ev.volume,
+                });
+
+                await redis.del(cacheKeys.activeCandle(ev.symbol, ev.timeframe));
+
+                const dbCost = performance.now() - dbStart;
+                console.log(`[trace][flush-db] symbol=${ev.symbol} tf=${ev.timeframe} costMs=${dbCost.toFixed(2)}`);
+
+                void publishCandle(producer, ev);
+            }
+        }
+
+        const timerCost = performance.now() - timerStart;
+        if (timerCost > 20) {
+            console.log(`[trace][flush-total] costMs=${timerCost.toFixed(2)}`);
+        }
+    }, 1000);
+
+    const activePublishTimer = setInterval(async () => {
+        for (const agg of aggregators) {
+            const updates = agg.collectDirtyUpdates();
+
+            for (const ev of updates) {
+                await redis.set(
+                    cacheKeys.activeCandle(ev.symbol, ev.timeframe),
+                    JSON.stringify({
+                        symbol: ev.symbol,
+                        timeframe: ev.timeframe,
+                        openTime: new Date(ev.openTime).toISOString(),
+                        closeTime: new Date(ev.closeTime).toISOString(),
+                        open: ev.open,
+                        high: ev.high,
+                        low: ev.low,
+                        close: ev.close,
+                        volume: ev.volume,
+                    }),
+                    "EX",
+                    180
+                );
+
+                void publishCandle(producer, ev).catch((err) => {
+                    console.error("[candle-service] publish updated failed:", err);
+                });
+            }
+        }
+    }, 200);
 
     await consumer.run({
         eachMessage: async ({ message }: any) => {
@@ -87,6 +164,23 @@ async function main() {
                 }
 
                 if (opened) {
+                    await redis.set(
+                        cacheKeys.activeCandle(opened.symbol, opened.timeframe),
+                        JSON.stringify({
+                            symbol: opened.symbol,
+                            timeframe: opened.timeframe,
+                            openTime: new Date(opened.openTime).toISOString(),
+                            closeTime: new Date(opened.closeTime).toISOString(),
+                            open: opened.open,
+                            high: opened.open,
+                            low: opened.open,
+                            close: opened.open,
+                            volume: 0,
+                        }),
+                        "EX",
+                        180
+                    );
+                    
                     void publishCandle(producer, opened).catch((err) => {
                         console.error("[candle-service] publish opened failed:", err);
                     });
@@ -106,6 +200,8 @@ async function main() {
                         volume: closed.volume,
                     });
 
+                    await redis.del(cacheKeys.activeCandle(closed.symbol, closed.timeframe));
+
                     const dbCost = performance.now() - dbStart;
                     console.log(`[trace][candle-db] symbol=${closed.symbol} tf=${closed.timeframe} costMs=${dbCost.toFixed(2)}`);
 
@@ -122,46 +218,14 @@ async function main() {
         }
     });
 
-    const flushTimer = setInterval(async () => {
-        const now = Date.now();
-        const timerStart = performance.now();
-
-        for (const agg of aggregators) {
-            const expired = agg.flushIfExpired(now);
-
-            for (const ev of expired) {
-                const dbStart = performance.now();
-
-                await upsertCandle({
-                    symbol: ev.symbol,
-                    timeframe: ev.timeframe,
-                    openTime: new Date(ev.openTime).toISOString(),
-                    open: ev.open,
-                    high: ev.high,
-                    low: ev.low,
-                    close: ev.close,
-                    volume: ev.volume,
-                });
-
-                const dbCost = performance.now() - dbStart;
-                console.log(`[trace][flush-db] symbol=${ev.symbol} tf=${ev.timeframe} costMs=${dbCost.toFixed(2)}`);
-
-                void publishCandle(producer, ev);
-            }
-        }
-
-        const timerCost = performance.now() - timerStart;
-        if (timerCost > 20) {
-            console.log(`[trace][flush-total] costMs=${timerCost.toFixed(2)}`);
-        }
-    }, 1000);
-
     const shutdown = async () => {
         clearInterval(flushTimer);
+        clearInterval(activePublishTimer);
 
         try {
             await consumer.disconnect();
             await producer.disconnect();
+            await redis.quit();
 
             if (AppDataSource.isInitialized) {
                 await AppDataSource.destroy();

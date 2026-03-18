@@ -1,39 +1,20 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { BINANCE_TIMEFRAMES, CandleEvent, CandleTimeframe, OrderbookSnapshotEvent, Symbol, SYMBOLS, TickEvent } from "@wts/common";
+import { BINANCE_TIMEFRAMES, cacheKeys, CandleEvent, CandleTimeframe, OrderbookSnapshotEvent, Symbol, SYMBOLS } from "@wts/common";
 import { createConsumer } from "@wts/kafka";
 import { MarketGateway } from "./market.gateway";
 import { RedisService } from "./redis/redis.service";
-import { redisKeys } from "./redis/redis.keys";
-import { CandleEntity } from "./candles/entities/candle.entity";
-import { Repository } from "typeorm";
-import { InjectRepository } from "@nestjs/typeorm";
 
 @Injectable()
 export class MarketConsumerService implements OnModuleInit, OnModuleDestroy {
     private consumer: any;
 
-    private static readonly ACTIVE_CANDLE_TTL_SECONDS = 180;
     private static readonly ORDERBOOK_TTL_SECONDS = 15;
-
-    private readonly activeCandles = new Map<string, {
-        symbol: Symbol;
-        timeframe: CandleTimeframe;
-        openTime: string;
-        closeTime: string;
-        open: number;
-        high: number;
-        low: number;
-        close: number;
-        volume: number;
-    }>();
 
     constructor(
         private readonly config: ConfigService,
         private readonly marketGateway: MarketGateway,
         private readonly redisService: RedisService,
-        @InjectRepository(CandleEntity)
-        private readonly candleRepository: Repository<CandleEntity>
     ) {}
 
     async onModuleInit() {
@@ -47,12 +28,7 @@ export class MarketConsumerService implements OnModuleInit, OnModuleDestroy {
 
         console.log("[api-gateway] consumer connected:", brokers.join(","));
 
-        await this.restoreActiveCandlesFromDb();        
-        
         for (const symbol of SYMBOLS) {
-            // tick topic
-            // await this.consumer.subscribe({ topic: `tick.${symbol}`, fromBeginning: false });
-
             // candle topic
             for (const timeframe of BINANCE_TIMEFRAMES) {
                 await this.consumer.subscribe({ topic: `candle.${symbol}.${timeframe}`, fromBeginning: false });
@@ -68,52 +44,6 @@ export class MarketConsumerService implements OnModuleInit, OnModuleDestroy {
                 const raw = message.value.toString();
 
                 try {
-                    // if (topic.startsWith("tick.")) {
-                    //     const tick = JSON.parse(raw) as TickEvent;
-
-                    //     const lagMs = Date.now() - new Date(tick.ts).getTime();
-
-                    //     if (Math.random() < 0.01) {
-                    //         console.log(`[trace][gateway-tick] symbol=${tick.symbol} lagMs=${lagMs}`);
-                    //     }
-
-                    //     for (const timeframe of BINANCE_TIMEFRAMES) {
-                    //         const key = this.getCandleKey(tick.symbol, timeframe);
-                    //         const active = this.activeCandles.get(key);
-                    //         if (!active) continue;
-
-                    //         const tickMs = new Date(tick.ts).getTime();
-                    //         const openMs = new Date(active.openTime).getTime();
-                    //         const closeMs = new Date(active.closeTime).getTime();
-
-                    //         if (tickMs < openMs || tickMs > closeMs) continue;
-
-                    //         active.high = Math.max(active.high, tick.price);
-                    //         active.low = Math.min(active.low, tick.price);
-                    //         active.close = tick.price;
-                    //         active.volume += tick.qty ?? 0;
-
-                    //         this.activeCandles.set(key, active);
-
-                    //         await this.redisService.setJson(
-                    //             redisKeys.activeCandle(tick.symbol, timeframe),
-                    //             active,
-                    //             MarketConsumerService.ACTIVE_CANDLE_TTL_SECONDS
-                    //         );
-                    //     }
-
-                    //     this.marketGateway.broadcastTick(tick);
-
-                    //     // console.log(
-                    //     //     "[api-gateway] tick:",
-                    //     //     tick.symbol,
-                    //     //     tick.price,
-                    //     //     tick.qty,
-                    //     //     tick.ts
-                    //     // );
-                    //     return;
-                    // }
-
                     if (topic.startsWith("candle.")) {
                         const candleEvent = JSON.parse(raw) as CandleEvent;
 
@@ -121,51 +51,6 @@ export class MarketConsumerService implements OnModuleInit, OnModuleDestroy {
 
                         if (Math.random() < 0.05) {
                             console.log(`[trace][gateway-candle] symbol=${candleEvent.symbol} tf=${candleEvent.timeframe} lagFromOpenMs=${lagMs}`);
-                        }
-
-                        const key = this.getCandleKey(candleEvent.symbol, candleEvent.timeframe);
-
-                        const current = this.activeCandles.get(key);
-                        const currentOpenMs = current ? new Date(current.openTime).getTime() : null;
-
-                        // 더 오래된 봉이면 무시
-                        if (currentOpenMs !== null && candleEvent.openTime < currentOpenMs) {
-                            return;
-                        }
-
-                        if (candleEvent.type === "CANDLE_OPENED") {
-                            this.activeCandles.set(key, {
-                                symbol: candleEvent.symbol,
-                                timeframe: candleEvent.timeframe,
-                                openTime: new Date(candleEvent.openTime).toISOString(),
-                                closeTime: new Date(candleEvent.closeTime).toISOString(),
-                                open: candleEvent.open,
-                                high: candleEvent.open,
-                                low: candleEvent.open,
-                                close: candleEvent.open,
-                                volume: 0
-                            });
-                        } else if (candleEvent.type === "CANDLE_CLOSED") {
-                            this.activeCandles.set(key, {
-                                symbol: candleEvent.symbol,
-                                timeframe: candleEvent.timeframe,
-                                openTime: new Date(candleEvent.openTime).toISOString(),
-                                closeTime: new Date(candleEvent.closeTime).toISOString(),
-                                open: candleEvent.open,
-                                high: candleEvent.high,
-                                low: candleEvent.low,
-                                close: candleEvent.close,
-                                volume: candleEvent.volume
-                            });
-                        }
-
-                        const snapshot = this.activeCandles.get(key);
-                        if (snapshot) {
-                            await this.redisService.setJson(
-                                redisKeys.activeCandle(candleEvent.symbol, candleEvent.timeframe),
-                                snapshot,
-                                MarketConsumerService.ACTIVE_CANDLE_TTL_SECONDS
-                            );
                         }
 
                         const emitStart = performance.now();
@@ -178,13 +63,6 @@ export class MarketConsumerService implements OnModuleInit, OnModuleDestroy {
                             console.log(`[trace][gateway-emit] symbol=${candleEvent.symbol} tf=${candleEvent.timeframe} costMs=${emitCost.toFixed(2)}`);
                         }
 
-                        // console.log(
-                        //     "[api-gateway] candle:",
-                        //     candleEvent.symbol,
-                        //     candleEvent.timeframe,
-                        //     candleEvent.openTime,
-                        //     candleEvent.close
-                        // );
                         return;
                     }
 
@@ -192,7 +70,7 @@ export class MarketConsumerService implements OnModuleInit, OnModuleDestroy {
                         const orderbook = JSON.parse(raw) as OrderbookSnapshotEvent;
 
                         await this.redisService.setJson(
-                            redisKeys.orderbook(orderbook.symbol),
+                            cacheKeys.orderbook(orderbook.symbol),
                             orderbook,
                             MarketConsumerService.ORDERBOOK_TTL_SECONDS
                         );
@@ -223,65 +101,14 @@ export class MarketConsumerService implements OnModuleInit, OnModuleDestroy {
 
     async getLatestOrderbook(symbol: Symbol) {
         return this.redisService.getJson<OrderbookSnapshotEvent>(
-            redisKeys.orderbook(symbol)
+            cacheKeys.orderbook(symbol)
         );
-    }
-
-    private getCandleKey(symbol: Symbol, timeframe: CandleTimeframe) {
-        return `${symbol}.${timeframe}`;
     }
 
     async getActiveCandle(symbol: Symbol, timeframe: CandleTimeframe) {
         return this.redisService.getJson(
-            redisKeys.activeCandle(symbol, timeframe)
+            cacheKeys.activeCandle(symbol, timeframe)
         );
-    }
-
-    private getTimeframeMs(timeframe: CandleTimeframe) {
-        switch (timeframe) {
-            case "1m": return 60_000;
-            case "5m": return 5 * 60_000;
-            case "30m": return 30 * 60_000;
-            case "1h": return 60 * 60_000;
-            case "12h": return 12 * 60 * 60_000;
-            case "1d": return 24 * 60 * 60_000;
-            default:
-                throw new Error(`unsupported timeframe: ${timeframe satisfies never}`);
-        }
-    }
-
-    private async restoreActiveCandlesFromDb() {
-        const nowMs = Date.now();
-
-        for (const symbol of SYMBOLS) {
-            for (const timeframe of BINANCE_TIMEFRAMES) {
-                const latest = await this.candleRepository.findOne({
-                    where: { symbol, timeframe },
-                    order: { openTime: "DESC" }
-                });
-
-                if (!latest) continue;
-
-                const openMs = new Date(latest.openTime).getTime();
-                const closeMs = openMs + this.getTimeframeMs(timeframe) - 1;
-
-                if (nowMs >= openMs && nowMs <= closeMs) {
-                    const key = this.getCandleKey(symbol, timeframe);
-
-                    this.activeCandles.set(key, {
-                        symbol,
-                        timeframe,
-                        openTime: new Date(openMs).toISOString(),
-                        closeTime: new Date(closeMs).toISOString(),
-                        open: Number(latest.openPrice),
-                        high: Number(latest.highPrice),
-                        low: Number(latest.lowPrice),
-                        close: Number(latest.closePrice),
-                        volume: Number(latest.volume),
-                    });
-                }
-            }
-        }
     }
 
     async onModuleDestroy() {
