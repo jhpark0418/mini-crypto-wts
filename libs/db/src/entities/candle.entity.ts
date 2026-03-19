@@ -1,6 +1,6 @@
 import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from "typeorm";
 
-@Entity("candle")
+@Entity("candles")
 @Unique("uq_candle", ["symbol", "timeframe", "openTime"])
 @Index("idx_candle_symbol_timeframe_open_time", ["symbol", "timeframe", "openTime"])
 export class CandleEntity {

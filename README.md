@@ -18,6 +18,9 @@ PostgreSQL 기반 Candle History 저장 및 조회
 Redis 기반 Active Candle Snapshot / Orderbook Snapshot 관리
 WebSocket 기반 실시간 Tick / Candle / Orderbook 전송
 멀티 심볼 지원 (BTCUSDT, ETHUSDT)
+지정가 주문 매칭 엔진 (Limit Order Matching)
+주문/체결 이벤트 Kafka 스트리밍
+주문 조회 / 체결 조회 API
 ```
 
 <!-- ---
@@ -40,29 +43,31 @@ Realtime → WebSocket Stream
 graph TD
 
 A[Binance WebSocket] --> B[market-ingestor]
-B -->|publish tick/orderbook| C[Kafka]
+B -->|publish tick / orderbook| C[Kafka]
 
-D[Binance REST API] --> E[candle-service]
-C -->|consume tick| E
-E -->|persist candle history| P[(PostgreSQL)]
-E -->|store active candle| R[(Redis)]
-E -->|publish candle| C
+C -->|consume tick| D[candle-service]
+D -->|publish candle| C
 
-C -->|consume tick| F[api-gateway TickConsumerService]
-C -->|consume candle/orderbook| G[api-gateway MarketConsumerService]
-P -->|REST history| G
-R -->|REST active candle/orderbook| G
+F[api-gateway] -->|publish order.command| C
+C -->|consume order.command| G[matching-engine]
+G -->|persist order/trade| P[(PostgreSQL)]
+G -->|publish order.updated / trade.executed| C
 
-F -->|WebSocket tick| H[React Chart]
-G -->|WebSocket candle/orderbook| H
-H -->|REST candles / active-candle / orderbook| G
+C -->|consume tick / candle / orderbook / order/trade events| F
+D -->|write active candle| R[(Redis)]
+F -->|read active candle| R
+F -->|read orders / trades| P
+
+F -->|WebSocket| H[React Chart / Trading UI]
+H -->|REST history| I[Binance REST API]
 ```
 
 ---
 
 # Event Flow
 
-Tick 이벤트가 생성되고 Candle 데이터가 만들어져 프론트엔드 차트까지 전달되는 전체 흐름입니다.
+Tick 이벤트가 생성되고 Candle 데이터가 만들어져 프론트엔드 차트까지 전달되는 흐름과,
+주문이 생성되어 매칭되고 체결 이벤트가 전파되는 흐름을 함께 다룹니다.
 
 ```mermaid
 sequenceDiagram
@@ -72,20 +77,22 @@ participant Ingestor
 participant Kafka
 participant CandleService
 participant ApiGateway
+participant MatchingEngine
 participant Client
 
 Binance->>Ingestor: Trade / Depth Stream
-Ingestor->>Kafka: TickEvent / OrderbookSnapshotEvent
+Ingestor->>Kafka: TickEvent / OrderbookEvent
 
 Kafka->>CandleService: consume TickEvent
-CandleService->>CandleService: aggregate active candle
-CandleService->>Redis: save active candle snapshot
-CandleService->>PostgreSQL: upsert closed candle
-CandleService->>Kafka: CandleOpened / CandleUpdated / CandleClosed
+CandleService->>Kafka: CandleEvent
 
-Kafka->>ApiGateway: consume tick + candle + orderbook
+Client->>ApiGateway: POST /api/orders
+ApiGateway->>Kafka: OrderCreateCommand
+Kafka->>MatchingEngine: consume order.command
+MatchingEngine->>Kafka: OrderUpdated / TradeExecuted
+
+Kafka->>ApiGateway: consume tick / candle / orderbook / order / trade
 ApiGateway->>Client: WebSocket push
-Client->>ApiGateway: REST history / active snapshot / orderbook snapshot
 ```
 
 ---
@@ -97,11 +104,12 @@ Client->>ApiGateway: REST history / active snapshot / orderbook snapshot
 각 서비스는 단일 책임을 가지도록 분리되어 있습니다.
 
 | Service         | Responsibility |
-| --------------- | ---------------- |
-| market-ingestor | Binance 체결 / 호가 데이터 수집 및 Kafka publish |
-| candle-service  | Tick → Candle 집계, Active Candle 상태 관리, PostgreSQL 저장 |
-| api-gateway     | Tick / Candle / Orderbook consume, REST API, WebSocket 전달 |
-| frontend        | REST + WebSocket 기반 실시간 차트 / Orderbook 렌더링 |
+| --------------- | -------------- |
+| market-ingestor | 거래소 시세/호가 수집 |
+| candle-service  | Tick → Candle 집계, Active Candle 상태 관리 |
+| matching-engine | 주문 매칭, 주문/체결 이벤트 생성, 주문/체결 DB 반영 |
+| api-gateway     | REST API + WebSocket + Kafka consumer |
+| frontend        | 실시간 차트 및 주문/체결 데이터 렌더링 |
 
 ---
 
@@ -176,6 +184,38 @@ candle.ETHUSDT.30m
 
 ---
 
+## matching-engine
+
+지정가 주문을 받아 간단한 가격/시간 우선 매칭을 수행하는 서비스입니다.
+
+역할
+
+- `order.command.{symbol}` consume
+- Limit Buy / Limit Sell 매칭
+- resting order 기준 체결가 결정
+- 주문 상태 변경 (`OPEN`, `PARTIALLY_FILLED`, `FILLED`, `REJECTED`)
+- 체결 이벤트 생성
+- 주문/체결 이력 PostgreSQL 저장
+- Kafka Topic으로 주문/체결 이벤트 발행
+
+Kafka Topic
+
+```text
+order.command.{symbol}
+order.updated.{symbol}
+trade.executed.{symbol}
+```
+
+예시
+
+```text
+order.command.BTCUSDT
+order.updated.BTCUSDT
+trade.executed.BTCUSDT
+```
+
+---
+
 ## api-gateway
 
 클라이언트와 직접 통신하는 API 서비스입니다.
@@ -184,10 +224,12 @@ candle.ETHUSDT.30m
 
 - TickConsumerService를 통한 Kafka tick 이벤트 consume 및 WebSocket broadcast
 - MarketConsumerService를 통한 Kafka candle / orderbook 이벤트 consume
+- OrdersConsumerService를 통한 Kafka order.updated / trade.executed 이벤트 consume
 - `/api/candles` 히스토리 API 제공 (PostgreSQL 조회)
 - `/api/market/active-candle` Snapshot API 제공 (Redis 조회)
 - `/api/market/orderbook` Snapshot API 제공 (Redis 조회)
 - WebSocket 실시간 데이터 전송 및 클라이언트 연결 관리
+- 주문 생성 / 주문 조회 / 체결 조회 API 제공
 
 api-gateway는 candle을 직접 계산하지 않으며,
 `candle-service`가 생성한 결과를 REST / WebSocket 형태로 클라이언트에 전달하는 역할을 수행합니다.
@@ -366,6 +408,7 @@ Active Candle Snapshot 기반 차트 초기화
 ```
 Node.js
 TypeScript
+NestJS
 Kafka
 Socket.IO
 Redis
@@ -407,8 +450,13 @@ mini-crypto-wts
 │   │   ├─ Redis active candle snapshot writer
 │   │   └─ PostgreSQL candle persistence
 │   │
+│   ├─ matching-engine
+│   │   ├─ limit order matching engine
+│   │   ├─ order/trade persistence
+│   │   └─ Kafka order/trade event publisher
+│   │
 │   ├─ api-gateway
-│   │   ├─ REST API (/api/candles, /api/market/*)
+│   │   ├─ REST API (candles / market / orders / trades)
 │   │   ├─ TickConsumerService
 │   │   ├─ MarketConsumerService
 │   │   └─ Socket.IO gateway
@@ -423,7 +471,7 @@ mini-crypto-wts
     ├─ common
     │   └─ shared event types / market constants / cache keys
     ├─ kafka
-    │   └─ Kafka helper wrapper
+    │   └─ Kafka helper and topic ensure utilities
     └─ db
         └─ shared CandleEntity / Postgres config
 ```
@@ -441,23 +489,12 @@ Step5  멀티 타임프레임 캔들 생성 (1m / 5m / 30m / 1h / 12h / 1d)
 Step6  PostgreSQL을 이용한 캔들 데이터 저장 및 히스토리 관리
 Step7  시스템 안정화 및 멀티 심볼(BTCUSDT, ETHUSDT) 지원
 Step8  Orderbook 스트리밍 및 Active Candle Snapshot 기능 구현
+Step9  지정가 주문 매칭 엔진, 주문/체결 이벤트, 주문/체결 조회 API 구현 (진행 중)
 ```
 
 ---
 
 # Future Roadmap
-
-## Step9
-
-Matching Engine
-간단한 **거래 매칭 엔진(Matching Engine)**을 구현합니다.
-```text
-- Limit Order
-- Market Order
-- 주문 매칭 로직
-- 체결 이벤트 생성
-- 체결 데이터 스트리밍
-```
 
 ## Step10
 
@@ -538,17 +575,18 @@ docker compose -f infra/docker-compose.yml up -d
 
 ```bash
 npm install
-npm -w libs/common run build
-npm -w libs/kafka run build
-npm -w libs/db run build
+npm -w @wts/common run build
+npm -w @wts/kafka run build
+npm -w @wts/db run build
 ```
 
 서비스 실행
 
 ```bash
-npm -w apps/market-ingestor run dev
-npm -w apps/candle-service run dev
-npm -w apps/api-gateway run start:dev
+npm run dev:market
+npm run dev:candle
+npm run dev:api
+npm run dev:matching
 ```
 
 프론트 실행

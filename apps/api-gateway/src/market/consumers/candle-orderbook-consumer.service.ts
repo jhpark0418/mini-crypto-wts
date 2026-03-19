@@ -1,12 +1,12 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { BINANCE_TIMEFRAMES, cacheKeys, CandleEvent, CandleTimeframe, OrderbookSnapshotEvent, Symbol, SYMBOLS } from "@wts/common";
-import { createConsumer } from "@wts/kafka";
-import { MarketGateway } from "./market.gateway";
-import { RedisService } from "./redis/redis.service";
+import { createConsumer, ensureTopics } from "@wts/kafka";
+import { MarketGateway } from "../market.gateway";
+import { RedisService } from "../../redis/redis.service";
 
 @Injectable()
-export class MarketConsumerService implements OnModuleInit, OnModuleDestroy {
+export class CandleOrderbookConsumer implements OnModuleInit, OnModuleDestroy {
     private consumer: any;
 
     private static readonly ORDERBOOK_TTL_SECONDS = 15;
@@ -19,6 +19,22 @@ export class MarketConsumerService implements OnModuleInit, OnModuleDestroy {
 
     async onModuleInit() {
         const brokers = (this.config.get<string>("KAFKA_BROKERS") ?? "localhost:9092").split(",");
+
+        const topics: string[] = [];
+        
+        for (const symbol of SYMBOLS) {
+            for (const timeframe of BINANCE_TIMEFRAMES) {
+                topics.push(`candle.${symbol}.${timeframe}`);
+            }
+
+            topics.push(`orderbook.${symbol}`);
+        }
+
+        await ensureTopics({
+            clientId: "api-gateway-market-ensure",
+            brokers,
+            topics
+        });
 
         this.consumer = await createConsumer({
             clientId: "api-gateway",
@@ -72,14 +88,14 @@ export class MarketConsumerService implements OnModuleInit, OnModuleDestroy {
                         await this.redisService.setJson(
                             cacheKeys.orderbook(orderbook.symbol),
                             orderbook,
-                            MarketConsumerService.ORDERBOOK_TTL_SECONDS
+                            CandleOrderbookConsumer.ORDERBOOK_TTL_SECONDS
                         );
 
                         if (Math.random() < 0.02) {
                             console.log(`[trace][gateway-orderbook] symbol=${orderbook.symbol} bids=${orderbook.bids.length} asks=${orderbook.asks.length}`);
                         }
 
-                        this.marketGateway.broadcastOrdebook(orderbook);
+                        this.marketGateway.broadcastOrderbook(orderbook);
                         return;
                     }
 

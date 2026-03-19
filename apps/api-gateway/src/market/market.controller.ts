@@ -1,11 +1,11 @@
 import { Controller, Get, NotFoundException, Query } from '@nestjs/common';
 import { type CandleTimeframe, type Symbol } from '@wts/common';
-import { MarketConsumerService } from 'src/market-consumer.service';
+import { CandleOrderbookConsumer } from 'src/market/consumers/candle-orderbook-consumer.service';
 
 @Controller('api/market')
 export class MarketController {
     constructor(
-        private readonly marketConsumerService: MarketConsumerService
+        private readonly candleOrderbookConsumer: CandleOrderbookConsumer
     ) {}
 
     @Get("active-candle")
@@ -13,7 +13,7 @@ export class MarketController {
         @Query("symbol") symbol: Symbol,
         @Query("timeframe") timeframe: CandleTimeframe
     ) {
-        const snapshot = await this.marketConsumerService.getActiveCandle(symbol, timeframe);
+        const snapshot = await this.candleOrderbookConsumer.getActiveCandle(symbol, timeframe);
         if (!snapshot) {
             throw new NotFoundException("Active candle snapshot not found");
         }
@@ -24,7 +24,7 @@ export class MarketController {
     async getOrderbook(
         @Query("symbol") symbol: Symbol
     ) {
-        const snapshot = await this.marketConsumerService.getLatestOrderbook(symbol);
+        const snapshot = await this.candleOrderbookConsumer.getLatestOrderbook(symbol);
         if (!snapshot) {
             throw new NotFoundException("Orderbook snapshot not found");
         }

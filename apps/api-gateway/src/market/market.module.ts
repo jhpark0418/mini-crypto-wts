@@ -1,15 +1,15 @@
 import { Module } from '@nestjs/common';
 import { MarketController } from './market.controller';
-import { MarketConsumerService } from 'src/market-consumer.service';
-import { MarketGateway } from 'src/market.gateway';
+import { CandleOrderbookConsumer } from 'src/market/consumers/candle-orderbook-consumer.service';
+import { MarketGateway } from 'src/market/market.gateway';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CandleEntity } from '@wts/db';
-import { TickConsumerService } from 'src/tick-consumer.service';
+import { TickConsumerService } from 'src/market/consumers/tick-consumer.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([CandleEntity])],
-  providers: [MarketConsumerService, TickConsumerService, MarketGateway],
+  providers: [CandleOrderbookConsumer, TickConsumerService, MarketGateway],
   controllers: [MarketController],
-  exports: [MarketConsumerService]
+  exports: [CandleOrderbookConsumer, MarketGateway]
 })
 export class MarketModule {}

@@ -1,7 +1,7 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { MarketGateway } from "./market.gateway";
-import { createConsumer, createAdmin } from "@wts/kafka";
+import { MarketGateway } from "../market.gateway";
+import { createConsumer, createAdmin, ensureTopics } from "@wts/kafka";
 import { SYMBOLS, TickEvent } from "@wts/common";
 
 @Injectable()
@@ -17,6 +17,12 @@ export class TickConsumerService implements OnModuleInit, OnModuleDestroy {
 
     async onModuleInit() {
         const brokers = (this.config.get<string>("KAFKA_BROKERS") ?? "localhost:9092").split(",");
+
+        await ensureTopics({
+            clientId: "api-gateway-tick-ensure",
+            brokers,
+            topics: SYMBOLS.map((symbol) => `tick.${symbol}`)
+        });
 
         this.consumer = await createConsumer({
             clientId: "api-gateway-tick",

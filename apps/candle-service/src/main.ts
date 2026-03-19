@@ -1,6 +1,6 @@
 import "reflect-metadata";
 import "./env.js";
-import { createConsumer, createProducer } from "@wts/kafka";
+import { createConsumer, createProducer, ensureTopics } from "@wts/kafka";
 import { CandleAggregator } from "./candle/candle.aggregator.js"
 import { TickEvent, Symbol, CandleTimeframe, SYMBOLS, BINANCE_TIMEFRAMES, CandleEvent, cacheKeys } from "@wts/common";
 import { AppDataSource } from "./db/data-source.js";
@@ -40,6 +40,22 @@ async function main() {
 
     await AppDataSource.initialize();
     console.log("[candle-service] database connected");
+
+    const topics: string[] = [];
+
+    for (const symbol of SYMBOLS) {
+        topics.push(`tick.${symbol}`);
+
+        for (const timeframe of BINANCE_TIMEFRAMES) {
+            topics.push(`candle.${symbol}.${timeframe}`);
+        }
+    }
+
+    await ensureTopics({
+        clientId: "candle-service-ensure",
+        brokers,
+        topics
+    });
 
     await backfillCandles(SYMBOLS, BINANCE_TIMEFRAMES, 200);
     console.log("[candle-service] initial backfill completed");

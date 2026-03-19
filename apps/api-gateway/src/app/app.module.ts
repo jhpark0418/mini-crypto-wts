@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { createPostgresOptions } from '@wts/db';
 import { CandlesModule } from 'src/candles/candles.module';
 import { MarketModule } from 'src/market/market.module';
+import { OrdersModule } from 'src/orders/orders.module';
 import { RedisModule } from 'src/redis/redis.module';
 
 @Module({
@@ -29,7 +30,8 @@ import { RedisModule } from 'src/redis/redis.module';
         }),
         CandlesModule,
         MarketModule,
-        RedisModule
+        RedisModule,
+        OrdersModule
     ],
 })
 export class AppModule {}
