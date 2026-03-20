@@ -1,5 +1,5 @@
 import WebSocket from "ws";
-import type { Symbol, TickEvent } from "@wts/common";
+import type { Symbol, TickEvent } from "@cmp/common";
 import { randomUUID } from "node:crypto";
 import { BinanceTradeMessage } from "./types.js";
 

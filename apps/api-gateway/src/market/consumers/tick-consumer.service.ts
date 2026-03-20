@@ -1,8 +1,8 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { MarketGateway } from "../market.gateway";
-import { createConsumer, createAdmin, ensureTopics } from "@wts/kafka";
-import { SYMBOLS, TickEvent } from "@wts/common";
+import { createConsumer, createAdmin, ensureTopics } from "@cmp/kafka";
+import { SYMBOLS, TickEvent } from "@cmp/common";
 
 @Injectable()
 export class TickConsumerService implements OnModuleInit, OnModuleDestroy {

@@ -1,4 +1,4 @@
-import { ActiveCandleSnapshot } from "@wts/common";
+import { ActiveCandleSnapshot } from "@cmp/common";
 import { CandleState } from "../candle/candle.types.js";
 
 export function toActiveCandleSnapshot(state: CandleState): ActiveCandleSnapshot {

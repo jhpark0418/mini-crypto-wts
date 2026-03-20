@@ -1,7 +1,7 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { BINANCE_TIMEFRAMES, cacheKeys, CandleEvent, CandleTimeframe, OrderbookSnapshotEvent, Symbol, SYMBOLS } from "@wts/common";
-import { createConsumer, ensureTopics } from "@wts/kafka";
+import { BINANCE_TIMEFRAMES, cacheKeys, CandleEvent, CandleTimeframe, OrderbookSnapshotEvent, Symbol, SYMBOLS } from "@cmp/common";
+import { createConsumer, ensureTopics } from "@cmp/kafka";
 import { MarketGateway } from "../market.gateway";
 import { RedisService } from "../../redis/redis.service";
 

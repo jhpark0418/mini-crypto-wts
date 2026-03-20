@@ -1,7 +1,7 @@
-import { CandleTimeframe, Symbol } from "@wts/common";
+import { CandleTimeframe, Symbol } from "@cmp/common";
 import { CandleState } from "../candle/candle.types.js";
 import { AppDataSource } from "../db/data-source.js";
-import { CandleEntity } from "@wts/db";
+import { CandleEntity } from "@cmp/db";
 import { timeframeToMs } from "../candle/candle.util.js";
 
 export async function restoreActiveState(

@@ -1,18 +1,16 @@
 {
-  "name": "mini-crypto-wts",
+  "name": "crypto-market-pipeline",
   "private": true,
   "version": "1.0.0",
-  "description": "",
+  "description": "Real-time crypto market data pipeline with Binance, Kafka, Redis, PostgreSQL, NestJS, and React",
   "main": "index.js",
   "workspaces": [
     "apps/*",
-    "libs/*",
-    "contracts/*"
+    "libs/*"
   ],
   "scripts": {
     "dev:market": "npm -w apps/market-ingestor run dev",
     "dev:candle": "npm -w apps/candle-service run dev",
-    "dev:matching": "npm -w apps/matching-engine run dev",
     "dev:api": "npm -w apps/api-gateway run start:dev",
     "dev:web": "npm -w apps/web run dev",
     "build": "npm -ws run build",
@@ -20,8 +18,8 @@
     "format": "prettier . --write"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "Junghoon Park",
+  "license": "MIT",
   "type": "commonjs",
   "devDependencies": {
     "eslint": "^10.0.2",

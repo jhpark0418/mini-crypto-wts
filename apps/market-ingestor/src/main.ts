@@ -1,6 +1,6 @@
 import "./env.js";
-import { SYMBOLS } from "@wts/common";
-import { createProducer, publishJson } from "@wts/kafka";
+import { SYMBOLS } from "@cmp/common";
+import { createProducer, publishJson } from "@cmp/kafka";
 import { startBinanceTradeStream } from "./binance-trade.client.js";
 import { startBinanceDepthStream } from "./binance-depth.client.js";
 

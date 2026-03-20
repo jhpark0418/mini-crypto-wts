@@ -1,4 +1,4 @@
-import { OrderbookLevel, OrderbookSnapshotEvent, Symbol } from "@wts/common";
+import { OrderbookLevel, OrderbookSnapshotEvent, Symbol } from "@cmp/common";
 import WebSocket from "ws";
 import { randomUUID } from "node:crypto";
 import { BinanceDepthMessage } from "./types.js";

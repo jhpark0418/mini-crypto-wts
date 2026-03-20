@@ -1,6 +1,6 @@
 import { BadRequestException, Controller, Get, Query } from '@nestjs/common';
 import { CandlesService } from './candles.service';
-import { SYMBOLS, Symbol, CandleTimeframe, BINANCE_TIMEFRAMES } from '@wts/common';
+import { SYMBOLS, Symbol, CandleTimeframe, BINANCE_TIMEFRAMES } from '@cmp/common';
 
 @Controller('api/candles')
 export class CandlesController {

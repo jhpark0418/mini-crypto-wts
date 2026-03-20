@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { CandlesService } from './candles.service';
 import { CandlesController } from './candles.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { CandleEntity } from '@wts/db';
+import { CandleEntity } from '@cmp/db';
 
 @Module({
   imports: [TypeOrmModule.forFeature([CandleEntity])],

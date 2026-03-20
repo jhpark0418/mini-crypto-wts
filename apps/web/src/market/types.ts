@@ -1,4 +1,4 @@
-import type { CandleTimeframe, Symbol } from "@wts/common";
+import type { CandleTimeframe, Symbol } from "@cmp/common";
 
 export type CandleHistoryItem = {
   symbol: Symbol;

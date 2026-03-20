@@ -1,6 +1,6 @@
 import type { UTCTimestamp } from "lightweight-charts";
 import type { CandleHistoryItem } from "./types";
-import type { CandleTimeframe, OrderbookSnapshotEvent, Symbol } from "@wts/common";
+import type { CandleTimeframe, OrderbookSnapshotEvent, Symbol } from "@cmp/common";
 
 
 const API_BASE_URL = "http://localhost:3000";

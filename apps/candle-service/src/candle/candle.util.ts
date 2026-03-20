@@ -1,4 +1,4 @@
-import { CandleTimeframe } from "@wts/common";
+import { CandleTimeframe } from "@cmp/common";
 
 export function toMs(ts: string) {
     const ms = Date.parse(ts);

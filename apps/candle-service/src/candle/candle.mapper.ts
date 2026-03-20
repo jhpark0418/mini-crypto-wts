@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { CandleOpenedEvent, CandleClosedEvent, CandleUpdatedEvent } from "@wts/common";
+import { CandleOpenedEvent, CandleClosedEvent, CandleUpdatedEvent } from "@cmp/common";
 import { CandleState } from "./candle.types.js";
 
 export function toCandleOpenedEvent(state: CandleState): CandleOpenedEvent {

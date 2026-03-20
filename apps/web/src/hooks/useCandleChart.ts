@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { CandlestickSeries, createChart, type IChartApi, type ISeriesApi } from "lightweight-charts";
-import type { CandleTimeframe } from "@wts/common";
+import type { CandleTimeframe } from "@cmp/common";
 
 type CandleTooltip = {
     x: number;
@@ -81,7 +81,7 @@ export function useCandleChart(selectedTimeframe: CandleTimeframe) {
             }
 
             const data = param.seriesData.get(series);
-            if (!data) {
+            if (!data || !("open" in data) || !("high" in data) || !("low" in data) || !("close" in data)) {
                 setTooltip(null);
                 return;
             }

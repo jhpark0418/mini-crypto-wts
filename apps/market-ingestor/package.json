@@ -1,5 +1,5 @@
 {
-  "name": "@wts/market-ingestor",
+  "name": "@cmp/market-ingestor",
   "version": "0.0.1",
   "type": "module",
   "scripts": {
@@ -7,8 +7,8 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@wts/common": "0.0.1",
-    "@wts/kafka": "^0.0.1",
+    "@cmp/common": "0.0.1",
+    "@cmp/kafka": "^0.0.1",
     "dotenv": "^17.3.1",
     "ws": "^8.18.3"
   },

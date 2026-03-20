@@ -1,7 +1,5 @@
 import { CandleEntity } from "../entities/candle.entity.js";
 import { PostgresConnectionOptions } from "typeorm/driver/postgres/PostgresConnectionOptions.js";
-import { OrderEntity } from "../entities/order.entity.js";
-import { TradeEntity } from "../entities/trade.entity.js";
 
 type EnvValue = string | Uint8Array | undefined;
 
@@ -39,10 +37,10 @@ export function createPostgresOptions (
     type: "postgres",
     host: toEnvString(env.DB_HOST, "localhost"),
     port: Number(toEnvString(env.DB_PORT, "5432")),
-    username: toEnvString(env.DB_USERNAME, "wts"),
-    password: toEnvString(env.DB_PASSWORD, "wts"),
-    database: toEnvString(env.DB_DATABASE, "wts"),
-    entities: [CandleEntity, OrderEntity, TradeEntity],
+    username: toEnvString(env.DB_USERNAME, "cmp"),
+    password: toEnvString(env.DB_PASSWORD, "cmp"),
+    database: toEnvString(env.DB_DATABASE, "cmp"),
+    entities: [CandleEntity],
     // synchronize: false,
     logging: false,
   }

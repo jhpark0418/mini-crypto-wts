@@ -13,9 +13,9 @@
     "emitDecoratorMetadata": true,
     "baseUrl": "./",
     "paths": {
-      "@wts/common": ["libs/common/src/index.ts"],
-      "@wts/kafka": ["libs/kafka/src/index.ts"],
-      "@wts/db": ["libs/db/src/index.ts"]
+      "@cmp/common": ["libs/common/src/index.ts"],
+      "@cmp/kafka": ["libs/kafka/src/index.ts"],
+      "@cmp/db": ["libs/db/src/index.ts"]
     }
   }
 }

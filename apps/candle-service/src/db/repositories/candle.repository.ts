@@ -1,5 +1,5 @@
 import { AppDataSource } from "../data-source.js";
-import { CandleEntity } from "@wts/db";
+import { CandleEntity } from "@cmp/db";
 
 export type UpsertCandleInput = {
     symbol: string;

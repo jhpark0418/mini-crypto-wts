@@ -1,98 +1,149 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# @cmp/api-gateway
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Crypto Market Pipeline의 API Gateway 애플리케이션입니다.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+Binance에서 수집되고 Kafka를 통해 가공된 시장 데이터를
+REST API와 WebSocket으로 외부 클라이언트에 전달합니다.
 
-## Description
+주요 역할은 다음과 같습니다.
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+- 캔들 히스토리 조회 API 제공
+- 현재 진행 중인 Active Candle 조회 API 제공
+- Redis 기반 오더북 스냅샷 조회 API 제공
+- WebSocket을 통한 실시간 시장 데이터 푸시
+- web 클라이언트와 시장 데이터 파이프라인 사이의 진입점 역할
 
-## Project setup
+---
 
-```bash
-$ npm install
+## Tech Stack
+
+- NestJS
+- TypeScript
+- Redis
+- PostgreSQL
+- Kafka
+- Socket.IO
+
+---
+
+## Project Role
+
+이 애플리케이션은 직접 시장 데이터를 생성하지 않습니다.
+
+역할은 크게 두 가지입니다.
+
+1. 저장된 시장 데이터를 조회 가능한 형태로 제공
+2. 실시간으로 갱신되는 데이터를 WebSocket으로 전달
+
+즉, `market-ingestor`와 `candle-service`가 데이터를 만들고,
+`api-gateway`는 그 결과를 외부에 노출합니다.
+
+---
+
+## 주요 API
+
+### 1. Candle History
+
+과거 캔들 데이터를 조회합니다.
+
+```http
+GET /api/candles?symbol=BTCUSDT&timeframe=1m&limit=200
 ```
 
-## Compile and run the project
-
-```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+Example Response
+```JSON
+[
+  {
+    "symbol": "BTCUSDT",
+    "timeframe": "1m",
+    "openTime": "2026-03-20T10:00:00.000Z",
+    "closeTime": "2026-03-20T10:00:59.999Z",
+    "open": 84250.12,
+    "high": 84310.55,
+    "low": 84210.01,
+    "close": 84290.99,
+    "volume": 12.548
+  }
+]
 ```
 
-## Run tests
+### 2. Active Candle Snapshot
 
-```bash
-# unit tests
-$ npm run test
+현재 메모리/Redis에 유지 중인 진행 중 캔들 상태를 조회합니다.
 
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+```http
+GET /api/market/active-candle?symbol=BTCUSDT&timeframe=1m
 ```
 
-## Deployment
+### 3. Orderbook Snapshot
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+Redis에 저장된 오더북 스냅샷을 조회합니다.
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+```http
+GET /api/market/orderbook?symbol=BTCUSDT&limit=20
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+---
 
-## Resources
+## WebSocket
 
-Check out a few resources that may come in handy when working with NestJS:
+실시간 시장 데이터를 클라이언트에 전달합니다.<br>
+기본적으로 web 클라이언트는 다음 흐름으로 데이터를 사용합니다.
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+1. REST API로 과거 캔들 조회
+2. WebSocket으로 최신 캔들 업데이트 수신
+3. 차트에 이어서 반영
 
-## Support
+실시간 전송 대상 예시
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+- active candle update
+- market snapshot update
+- orderbook snapshot update
 
-## Stay in touch
+실제 이벤트 이름은 구현 코드 기준으로 확인하면 됩니다.
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+--- 
 
-## License
+## Run
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+루트 워크스페이스 기준 실행 예시입니다.
+
+```shell
+npm run dev:api
+```
+
+---
+
+## Related Apps
+
+- apps/market-ingestor
+
+Binance 실시간 trade / depth 데이터 수집
+
+- apps/candle-service
+
+Kafka 이벤트를 소비하여 멀티 타임프레임 캔들 집계
+
+- apps/web
+
+REST + WebSocket 데이터를 사용하는 실시간 차트 UI
+
+---
+
+## Data Flow
+
+```text
+Binance WebSocket
+    ↓
+market-ingestor
+    ↓
+Kafka
+    ↓
+candle-service
+    ↓
+Redis / PostgreSQL
+    ↓
+api-gateway
+    ↓
+web
+```

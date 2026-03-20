@@ -1,5 +1,5 @@
 import { Controller, Get, NotFoundException, Query } from '@nestjs/common';
-import { type CandleTimeframe, type Symbol } from '@wts/common';
+import { type CandleTimeframe, type Symbol } from '@cmp/common';
 import { CandleOrderbookConsumer } from 'src/market/consumers/candle-orderbook-consumer.service';
 
 @Controller('api/market')

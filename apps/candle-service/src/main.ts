@@ -1,8 +1,8 @@
 import "reflect-metadata";
 import "./env.js";
-import { createConsumer, createProducer, ensureTopics } from "@wts/kafka";
+import { createConsumer, createProducer, ensureTopics } from "@cmp/kafka";
 import { CandleAggregator } from "./candle/candle.aggregator.js"
-import { TickEvent, Symbol, CandleTimeframe, SYMBOLS, BINANCE_TIMEFRAMES, CandleEvent, cacheKeys } from "@wts/common";
+import { TickEvent, Symbol, CandleTimeframe, SYMBOLS, BINANCE_TIMEFRAMES, CandleEvent, cacheKeys } from "@cmp/common";
 import { AppDataSource } from "./db/data-source.js";
 import { upsertCandle } from "./db/repositories/candle.repository.js";
 import { backfillCandles } from "./binance/backfill.service.js";

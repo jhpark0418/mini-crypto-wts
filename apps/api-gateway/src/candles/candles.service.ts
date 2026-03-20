@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { CandleTimeframe, Symbol } from '@wts/common';
-import { CandleEntity } from '@wts/db';
+import { CandleTimeframe, Symbol } from '@cmp/common';
+import { CandleEntity } from '@cmp/db';
 import { Repository } from 'typeorm';
 
 export type CandleHistoryItem = {

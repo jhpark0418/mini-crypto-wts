@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { io } from "socket.io-client";
 import { useCandleChart } from './hooks/useCandleChart';
 import { API_BASE_URL, fetchActiveCandle, fetchCandleHistory, fetchOrderbook } from './market/api';
-import { BINANCE_TIMEFRAMES, SYMBOLS, type CandleTimeframe, type CandleEvent, type Symbol, type TickEvent, type OrderbookLevel, type OrderbookSnapshotEvent } from '@wts/common';
+import { BINANCE_TIMEFRAMES, SYMBOLS, type CandleTimeframe, type CandleEvent, type Symbol, type TickEvent, type OrderbookLevel, type OrderbookSnapshotEvent } from '@cmp/common';
 import { type ActiveCandle, type CandleHistoryItem } from './market/types';
 
 const TIMEFRAME_MS: Record<CandleTimeframe, number> = {
@@ -364,7 +364,7 @@ export default function App() {
 
   return (
     <div style={{ padding: 24, fontFamily: "system-ui" }}>
-      <h2>mini-crypto-wts</h2>
+      <h2>crypto-market-pipeline</h2>
 
       <div>
         WS: <b>{connected ? "CONNECTED" : "DISCONNECTED"}</b>

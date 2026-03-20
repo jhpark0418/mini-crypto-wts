@@ -1,7 +1,7 @@
-import { CandleClosedEvent, CandleOpenedEvent, CandleUpdatedEvent, TickEvent } from "@wts/common";
+import { CandleClosedEvent, CandleOpenedEvent, CandleUpdatedEvent, TickEvent } from "@cmp/common";
 import { CandleState } from "./candle.types.js";
 import { bucketStartMs, timeframeToMs, toIso, toMs } from "./candle.util.js";
-import { Symbol, CandleTimeframe } from "@wts/common";
+import { Symbol, CandleTimeframe } from "@cmp/common";
 import { toCandleClosedEvent, toCandleOpenedEvent, toCandleUpdatedEvent } from "./candle.mapper.js";
 
 export class CandleAggregator {
