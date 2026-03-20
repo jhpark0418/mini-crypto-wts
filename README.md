@@ -30,8 +30,6 @@ React + lightweight-charts 기반 실시간 차트 UI
 ```mermaid
 graph TD
 
-graph TD
-
 A[Binance WebSocket] --> B[market-ingestor]
 B -->|publish tick / orderbook| C[Kafka]
 
