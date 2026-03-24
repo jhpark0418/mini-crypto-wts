@@ -1,6 +1,7 @@
 services:
   postgres:
-    image: postgres:17
+    image: timescale/timescaledb:latest-pg17
+    container_name: cmp-postgres
     environment:
       POSTGRES_USER: cmp
       POSTGRES_PASSWORD: cmp
@@ -9,13 +10,21 @@ services:
     ports: ["5432:5432"]
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cmp -d cmp"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   redis:
     image: redis:latest
+    container_name: cmp-redis
     ports: ["6379:6379"]
 
   kafka:
     image: apache/kafka:latest
+    container_name: cmp-kafka
     ports: ["9092:9092"]
     environment:
       # 단일 노드 KRaft 기본

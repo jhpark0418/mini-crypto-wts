@@ -1,19 +1,15 @@
-import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from "typeorm";
+import { Column, CreateDateColumn, Entity, Index, PrimaryColumn, UpdateDateColumn } from "typeorm";
 
 @Entity("candles")
-@Unique("uq_candle", ["symbol", "timeframe", "openTime"])
 @Index("idx_candle_symbol_timeframe_open_time", ["symbol", "timeframe", "openTime"])
 export class CandleEntity {
-    @PrimaryGeneratedColumn("increment", { type: "bigint" })
-    id!: string;
-
-    @Column({ type: "varchar", length: 20 })
+    @PrimaryColumn({ type: "varchar", length: 20 })
     symbol!: string;
 
-    @Column({ type: "varchar", length: 10 })
+    @PrimaryColumn({ type: "varchar", length: 10 })
     timeframe!: string;
 
-    @Column({ name: "open_time", type: "timestamp" })
+    @PrimaryColumn({ name: "open_time", type: "timestamptz" })
     openTime!: Date;
 
     @Column({ name: "open_price", type: "numeric", precision: 18, scale: 8 })
@@ -31,9 +27,9 @@ export class CandleEntity {
     @Column({ type: "numeric", precision: 28, scale: 8, default: 0 })
     volume!: string;
 
-    @CreateDateColumn({ name: "created_at", type: "timestamp" })
+    @CreateDateColumn({ name: "created_at", type: "timestamptz" })
     createdAt!: Date;
 
-    @UpdateDateColumn({ name: "updated_at", type: "timestamp" })
+    @UpdateDateColumn({ name: "updated_at", type: "timestamptz" })
     updatedAt!: Date;
 }

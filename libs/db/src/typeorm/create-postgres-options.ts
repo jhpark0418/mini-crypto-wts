@@ -33,7 +33,6 @@ export function createPostgresOptions (
   overrides: PostgresOverrides = {}
 ): PostgresConnectionOptions {
   return {
-    ...overrides,
     type: "postgres",
     host: toEnvString(env.DB_HOST, "localhost"),
     port: Number(toEnvString(env.DB_PORT, "5432")),
@@ -41,7 +40,8 @@ export function createPostgresOptions (
     password: toEnvString(env.DB_PASSWORD, "cmp"),
     database: toEnvString(env.DB_DATABASE, "cmp"),
     entities: [CandleEntity],
-    // synchronize: false,
+    synchronize: false,
     logging: false,
+    ...overrides,
   }
 }

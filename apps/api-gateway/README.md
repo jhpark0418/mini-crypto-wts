@@ -20,7 +20,7 @@ REST API와 WebSocket으로 외부 클라이언트에 전달합니다.
 - NestJS
 - TypeScript
 - Redis
-- PostgreSQL
+- TimescaleDB
 - Kafka
 - Socket.IO
 
@@ -40,6 +40,23 @@ REST API와 WebSocket으로 외부 클라이언트에 전달합니다.
 
 ---
 
+## Supported Symbols / Timeframes
+
+### Symbols
+- `BTCUSDT`
+- `ETHUSDT`
+
+### Timeframes
+- `1m`
+- `5m`
+- `30m`
+- `1h`
+- `12h`
+- `1d`
+
+---
+
+
 ## 주요 API
 
 ### 1. Candle History
@@ -56,13 +73,22 @@ Example Response
   {
     "symbol": "BTCUSDT",
     "timeframe": "1m",
-    "openTime": "2026-03-20T10:00:00.000Z",
-    "closeTime": "2026-03-20T10:00:59.999Z",
-    "open": 84250.12,
-    "high": 84310.55,
-    "low": 84210.01,
-    "close": 84290.99,
-    "volume": 12.548
+    "openTime": "2026-03-24T05:10:00.000Z",
+    "open": 70166.59,
+    "high": 70183.37,
+    "low": 70160.71,
+    "close": 70183.36,
+    "volume": 8.1083
+  },
+  {
+    "symbol": "BTCUSDT",
+    "timeframe": "1m",
+    "openTime": "2026-03-24T05:11:00.000Z",
+    "open": 70183.37,
+    "high": 70215.2,
+    "low": 70176.1,
+    "close": 70179.38,
+    "volume": 7.73603
   }
 ]
 ```
@@ -75,12 +101,44 @@ Example Response
 GET /api/market/active-candle?symbol=BTCUSDT&timeframe=1m
 ```
 
+```JSON
+{
+  "symbol": "BTCUSDT",
+  "timeframe": "1m",
+  "openTime": "2026-03-24T05:18:00.000Z",
+  "closeTime": "2026-03-24T05:18:59.999Z",
+  "open": 70174.51,
+  "high": 70305.57,
+  "low": 70157.17,
+  "close": 70305.57,
+  "volume": 6.01235
+}
+```
+
 ### 3. Orderbook Snapshot
 
 Redis에 저장된 오더북 스냅샷을 조회합니다.
 
 ```http
 GET /api/market/orderbook?symbol=BTCUSDT&limit=20
+```
+
+```JSON
+{
+  "eventId": "7f0a4f3d-7f5f-4f20-b2c2-9a3b5ef6d0d1",
+  "type": "ORDERBOOK_SNAPSHOT",
+  "symbol": "BTCUSDT",
+  "bids": [
+    { "price": 70305.56, "qty": 0.421 },
+    { "price": 70305.55, "qty": 0.812 }
+  ],
+  "asks": [
+    { "price": 70305.57, "qty": 0.337 },
+    { "price": 70305.58, "qty": 0.955 }
+  ],
+  "ts": "2026-03-24T05:18:12.345Z",
+  "source": "binance"
+}
 ```
 
 ---
@@ -100,7 +158,7 @@ GET /api/market/orderbook?symbol=BTCUSDT&limit=20
 - market snapshot update
 - orderbook snapshot update
 
-실제 이벤트 이름은 구현 코드 기준으로 확인하면 됩니다.
+실제 이벤트 이름과 payload는 구현 코드를 기준으로 확인하면 됩니다.
 
 --- 
 
@@ -141,7 +199,7 @@ Kafka
     ↓
 candle-service
     ↓
-Redis / PostgreSQL
+Redis / TimescaleDB
     ↓
 api-gateway
     ↓

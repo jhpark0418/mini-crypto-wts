@@ -4,7 +4,5 @@ import { createPostgresOptions } from "@cmp/db";
 
 
 export const AppDataSource = new DataSource(
-    createPostgresOptions(process.env, {
-        synchronize: true
-    })
+    createPostgresOptions(process.env)
 );

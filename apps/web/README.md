@@ -54,7 +54,7 @@ WebSocket으로 실시간 시장 데이터를 받아
 예시
 
 - Symbol: `BTCUSDT`, `ETHUSDT`
-- Timeframe: `10s`, `30s`, `1m`, `5m`, `15m`, `30m`
+- Timeframe: `1m`, `5m`, `30m`, `1h`, `12h`, `1d`
 
 ---
 

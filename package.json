@@ -14,7 +14,7 @@
     "dev:api": "npm -w apps/api-gateway run start:dev",
     "dev:web": "npm -w apps/web run dev",
     "build": "npm -ws run build",
-    "lint": "npm -ws run lint",
+    "lint": "npm -ws --if-present run lint",
     "format": "prettier . --write"
   },
   "keywords": [],
