@@ -23,25 +23,11 @@ REST + WebSocket 결합 기반 차트 초기화 전략
 React + lightweight-charts 기반 실시간 차트 UI
 ```
 
-<!-- ---
-
-# Demo
-
-실시간 캔들 차트
-
-History → Binance REST
-Realtime → WebSocket Stream
-
-(스크린샷 추가 가능)
-![chart](docs/chart.png) -->
-
 ---
 
 ## System Architecture
 
 ```mermaid
-graph TD
-
 graph TD
 
 A[Binance WebSocket] --> B[market-ingestor]
